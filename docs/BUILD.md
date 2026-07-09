@@ -49,6 +49,7 @@ Optional configuration file `vms-server.conf` in the working directory:
 storage.root=./vms-data
 log.level=info
 api.port=8080
+db.path=./vms-data/vms.db
 ```
 
 ## Server API quick test
@@ -115,3 +116,4 @@ Installer package also includes:
 - MinGW runtime DLLs
 - default `config\vms-server.conf`
 - `scripts\start-server.cmd` and `scripts\start-client.cmd`
+- `scripts\install-service.cmd` and `scripts\uninstall-service.cmd`

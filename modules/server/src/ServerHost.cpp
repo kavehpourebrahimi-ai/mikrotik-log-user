@@ -13,6 +13,7 @@
 #include "vms/recording/RecordingEngine.hpp"
 #include "vms/storage/LocalStorageProvider.hpp"
 #include "vms/storage/FileCameraRepository.hpp"
+#include "vms/storage/SqliteCameraRepository.hpp"
 #include "vms/storage/StorageManager.hpp"
 #include "vms/streaming/StreamPipeline.hpp"
 #include "vms/server/HttpApiServer.hpp"
@@ -30,9 +31,14 @@ ServerHost::ServerHost() {
 
     const auto storageRoot = config.get("storage.root", "./vms-data");
     std::filesystem::create_directories(storageRoot);
+    std::shared_ptr<ICameraRepository> repository;
+#if defined(VMS_HAS_SQLITE3)
+    const auto dbPath = config.get("db.path", storageRoot + "/vms.db");
+    repository = std::make_shared<SqliteCameraRepository>(dbPath);
+#else
     const auto dbPath = config.get("db.path", storageRoot + "/cameras.json");
-
-    auto repository = std::make_shared<FileCameraRepository>(dbPath);
+    repository = std::make_shared<FileCameraRepository>(dbPath);
+#endif
     auto storageManager = std::make_shared<StorageManager>();
     auto streamPipeline = std::make_shared<StreamPipeline>();
     auto eventBus = std::make_shared<EventBus>();

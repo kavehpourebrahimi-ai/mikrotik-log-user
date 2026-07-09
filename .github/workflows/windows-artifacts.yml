@@ -25,6 +25,7 @@ jobs:
             mingw-w64-x86_64-gcc
             mingw-w64-x86_64-cmake
             mingw-w64-x86_64-ninja
+            mingw-w64-x86_64-sqlite3
 
       - name: Build server and client
         shell: msys2 {0}
@@ -39,7 +40,7 @@ jobs:
           Copy-Item "build/modules/server/vms_server.exe" "artifacts/vms_server.exe"
           Copy-Item "build/modules/client/vms_client.exe" "artifacts/vms_client.exe"
           $dllSource = "C:\msys64\mingw64\bin"
-          $dlls = @("libgcc_s_seh-1.dll", "libwinpthread-1.dll", "libstdc++-6.dll")
+          $dlls = @("libgcc_s_seh-1.dll", "libwinpthread-1.dll", "libstdc++-6.dll", "libsqlite3-0.dll")
           foreach ($dll in $dlls) {
             $sourcePath = Join-Path $dllSource $dll
             if (Test-Path $sourcePath) {
@@ -60,6 +61,8 @@ jobs:
           Copy-Item "packaging/windows/config/vms-server.conf" "windows-dist/EnterpriseVMS/config/vms-server.conf" -Force
           Copy-Item "packaging/windows/scripts/start-server.cmd" "windows-dist/EnterpriseVMS/scripts/start-server.cmd" -Force
           Copy-Item "packaging/windows/scripts/start-client.cmd" "windows-dist/EnterpriseVMS/scripts/start-client.cmd" -Force
+          Copy-Item "packaging/windows/scripts/install-service.cmd" "windows-dist/EnterpriseVMS/scripts/install-service.cmd" -Force
+          Copy-Item "packaging/windows/scripts/uninstall-service.cmd" "windows-dist/EnterpriseVMS/scripts/uninstall-service.cmd" -Force
           Copy-Item "packaging/windows/README-WINDOWS.txt" "windows-dist/EnterpriseVMS/README-WINDOWS.txt" -Force
 
       - name: Install Inno Setup
