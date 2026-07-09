@@ -32,6 +32,9 @@ std::optional<httplib::Result> sendJsonRequest(
     if (method == "POST") {
         return client.Post(path.c_str(), headers, payload.dump(), "application/json");
     }
+    if (method == "DELETE") {
+        return client.Delete(path.c_str(), headers, payload.dump(), "application/json");
+    }
     return std::nullopt;
 }
 
@@ -113,7 +116,23 @@ bool ClientApp::login() {
         return false;
     }
     accessToken_ = parsed["access_token"].get<std::string>();
+    if (accessToken_.empty()) {
+        std::cerr << "Empty access token.\n";
+        return false;
+    }
     return true;
+}
+
+bool ClientApp::ensureAuthenticated() {
+    if (!accessToken_.empty()) {
+        return true;
+    }
+    return login();
+}
+
+bool ClientApp::handleUnauthorizedAndRetry() const {
+    std::cout << "Session unauthorized. Please restart client and login again.\n";
+    return false;
 }
 
 void ClientApp::showMainMenu() {
@@ -122,9 +141,11 @@ void ClientApp::showMainMenu() {
         std::cout << "1) Server health\n";
         std::cout << "2) List cameras\n";
         std::cout << "3) Add camera\n";
-        std::cout << "4) Start recording\n";
-        std::cout << "5) Stop recording\n";
-        std::cout << "6) Storage volumes\n";
+        std::cout << "4) Remove camera\n";
+        std::cout << "5) Start recording\n";
+        std::cout << "6) Stop recording\n";
+        std::cout << "7) Recording status\n";
+        std::cout << "8) Storage volumes\n";
         std::cout << "0) Exit\n";
 
         const auto choice = prompt("Select: ");
@@ -135,10 +156,14 @@ void ClientApp::showMainMenu() {
         } else if (choice == "3") {
             addCamera();
         } else if (choice == "4") {
-            startRecording();
+            removeCamera();
         } else if (choice == "5") {
-            stopRecording();
+            startRecording();
         } else if (choice == "6") {
+            stopRecording();
+        } else if (choice == "7") {
+            showRecordingStatus();
+        } else if (choice == "8") {
             showStorageVolumes();
         } else if (choice == "0") {
             return;
@@ -168,8 +193,16 @@ void ClientApp::listCameras() const {
     client.set_read_timeout(10);
 
     auto response = sendJsonRequest(client, "GET", "/api/v1/cameras", accessToken_);
-    if (!response || !*response || (*response)->status != 200) {
+    if (!response || !*response) {
         std::cout << "Failed to list cameras.\n";
+        return;
+    }
+    if ((*response)->status == 401) {
+        handleUnauthorizedAndRetry();
+        return;
+    }
+    if ((*response)->status != 200) {
+        std::cout << (*response)->body << '\n';
         return;
     }
 
@@ -197,6 +230,9 @@ void ClientApp::listCameras() const {
 }
 
 void ClientApp::addCamera() {
+    if (!ensureAuthenticated()) {
+        return;
+    }
     const auto name = prompt("Camera name: ");
     const auto host = prompt("Camera host/ip: ");
     const auto mainUri = prompt("Main RTSP URI: ");
@@ -224,10 +260,45 @@ void ClientApp::addCamera() {
         std::cout << "Request failed.\n";
         return;
     }
+    if ((*response)->status == 401) {
+        handleUnauthorizedAndRetry();
+        return;
+    }
+    std::cout << (*response)->body << '\n';
+}
+
+void ClientApp::removeCamera() {
+    if (!ensureAuthenticated()) {
+        return;
+    }
+    const auto cameraId = prompt("Camera ID to remove: ");
+    if (cameraId.empty()) {
+        std::cout << "Camera ID required.\n";
+        return;
+    }
+
+    httplib::Client client(serverUrl_);
+    auto response = sendJsonRequest(
+        client,
+        "DELETE",
+        "/api/v1/cameras/" + cameraId,
+        accessToken_,
+        json::object());
+    if (!response || !*response) {
+        std::cout << "Request failed.\n";
+        return;
+    }
+    if ((*response)->status == 401) {
+        handleUnauthorizedAndRetry();
+        return;
+    }
     std::cout << (*response)->body << '\n';
 }
 
 void ClientApp::startRecording() {
+    if (!ensureAuthenticated()) {
+        return;
+    }
     const auto cameraId = prompt("Camera ID: ");
     if (cameraId.empty()) {
         std::cout << "Camera ID required.\n";
@@ -245,10 +316,17 @@ void ClientApp::startRecording() {
         std::cout << "Request failed.\n";
         return;
     }
+    if ((*response)->status == 401) {
+        handleUnauthorizedAndRetry();
+        return;
+    }
     std::cout << (*response)->body << '\n';
 }
 
 void ClientApp::stopRecording() {
+    if (!ensureAuthenticated()) {
+        return;
+    }
     const auto cameraId = prompt("Camera ID: ");
     if (cameraId.empty()) {
         std::cout << "Camera ID required.\n";
@@ -266,6 +344,10 @@ void ClientApp::stopRecording() {
         std::cout << "Request failed.\n";
         return;
     }
+    if ((*response)->status == 401) {
+        handleUnauthorizedAndRetry();
+        return;
+    }
     std::cout << (*response)->body << '\n';
 }
 
@@ -274,6 +356,34 @@ void ClientApp::showStorageVolumes() const {
     auto response = sendJsonRequest(client, "GET", "/api/v1/storage/volumes", accessToken_);
     if (!response || !*response) {
         std::cout << "Request failed.\n";
+        return;
+    }
+    if ((*response)->status == 401) {
+        handleUnauthorizedAndRetry();
+        return;
+    }
+    std::cout << (*response)->body << '\n';
+}
+
+void ClientApp::showRecordingStatus() const {
+    const auto cameraId = prompt("Camera ID: ");
+    if (cameraId.empty()) {
+        std::cout << "Camera ID required.\n";
+        return;
+    }
+
+    httplib::Client client(serverUrl_);
+    auto response = sendJsonRequest(
+        client,
+        "GET",
+        "/api/v1/cameras/" + cameraId + "/record/status",
+        accessToken_);
+    if (!response || !*response) {
+        std::cout << "Request failed.\n";
+        return;
+    }
+    if ((*response)->status == 401) {
+        handleUnauthorizedAndRetry();
         return;
     }
     std::cout << (*response)->body << '\n';

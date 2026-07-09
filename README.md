@@ -43,6 +43,16 @@ curl -X POST http://127.0.0.1:8080/api/v1/cameras \
 curl http://127.0.0.1:8080/api/v1/cameras -H "Authorization: Bearer $TOKEN"
 ```
 
+### Interactive client menu (SmartPSS-style operational flow)
+
+`vms_client` now provides an operator menu with:
+- Login
+- Health dashboard
+- Camera list/add/remove
+- Start/stop recording
+- Recording status
+- Storage volume status
+
 See [docs/BUILD.md](docs/BUILD.md) for full build instructions and [docs/architecture.md](docs/architecture.md) for system design.
 
 ## Module Layout

@@ -176,6 +176,25 @@ Result<void> HttpApiServer::start() {
         respondJson(res, 201, json{{"id", camera.id.value}, {"status", "created"}});
     });
 
+    server_->Delete(
+        R"(/api/v1/cameras/([^/]+))",
+        [this](const httplib::Request& req, httplib::Response& res) {
+            const auto token = extractBearerToken(req);
+            if (token.empty() || !authenticationService_->validateToken(token).ok()) {
+                respondJson(res, 401, json{{"error", "Unauthorized"}});
+                return;
+            }
+
+            const CameraId cameraId{req.matches[1]};
+            const auto removeResult = cameraRepository_->remove(cameraId);
+            if (!removeResult.ok()) {
+                respondJson(res, 404, json{{"error", removeResult.error}});
+                return;
+            }
+
+            respondJson(res, 200, json{{"cameraId", cameraId.value}, {"status", "deleted"}});
+        });
+
     server_->Post(
         R"(/api/v1/cameras/([^/]+)/record/start)",
         [this](const httplib::Request& req, httplib::Response& res) {
@@ -234,6 +253,31 @@ Result<void> HttpApiServer::start() {
         }
         respondJson(res, 200, json{{"items", volumes}});
     });
+
+    server_->Get(
+        R"(/api/v1/cameras/([^/]+)/record/status)",
+        [this](const httplib::Request& req, httplib::Response& res) {
+            const auto token = extractBearerToken(req);
+            if (token.empty() || !authenticationService_->validateToken(token).ok()) {
+                respondJson(res, 401, json{{"error", "Unauthorized"}});
+                return;
+            }
+
+            const CameraId cameraId{req.matches[1]};
+            const auto cameraLookup = cameraRepository_->get(cameraId);
+            if (!cameraLookup.ok()) {
+                respondJson(res, 404, json{{"error", cameraLookup.error}});
+                return;
+            }
+
+            respondJson(
+                res,
+                200,
+                json{
+                    {"cameraId", cameraId.value},
+                    {"recording", recordingEngine_->isRecording(cameraId)},
+                });
+        });
 
     serverThread_ = std::thread([this]() {
         logger().log(
