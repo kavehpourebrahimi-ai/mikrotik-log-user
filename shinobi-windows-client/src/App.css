@@ -1,0 +1,407 @@
+:root {
+  color: #e8eef7;
+  background:
+    radial-gradient(circle at top left, rgba(56, 189, 248, 0.18), transparent 30%),
+    radial-gradient(circle at top right, rgba(99, 102, 241, 0.18), transparent 28%),
+    #09111f;
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+.login-shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 32px;
+}
+
+.login-card,
+.panel,
+.placeholder-card {
+  background: rgba(15, 23, 42, 0.88);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 18px;
+  box-shadow: 0 24px 80px rgba(2, 6, 23, 0.45);
+}
+
+.login-card {
+  width: min(460px, 100%);
+  padding: 28px;
+  display: grid;
+  gap: 16px;
+}
+
+.brand-block h1,
+.sidebar-brand h1,
+.panel-header h2 {
+  margin: 0;
+}
+
+.eyebrow {
+  margin: 0 0 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-size: 0.72rem;
+  color: #67e8f9;
+}
+
+label {
+  display: grid;
+  gap: 8px;
+  color: #cbd5e1;
+  font-size: 0.92rem;
+}
+
+input,
+select,
+button {
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  background: rgba(15, 23, 42, 0.92);
+  color: inherit;
+  padding: 12px 14px;
+}
+
+button {
+  cursor: pointer;
+  transition: transform 0.15s ease, border-color 0.15s ease;
+}
+
+button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: rgba(56, 189, 248, 0.55);
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.form-error {
+  margin: 0;
+  color: #fca5a5;
+}
+
+.saved-servers {
+  display: grid;
+  gap: 8px;
+}
+
+.saved-server-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.saved-server-chip {
+  padding: 8px 12px;
+}
+
+.app-shell {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 280px 1fr;
+}
+
+.sidebar {
+  padding: 24px 18px;
+  border-right: 1px solid rgba(148, 163, 184, 0.14);
+  background: rgba(2, 6, 23, 0.72);
+  display: grid;
+  grid-template-rows: auto auto 1fr auto;
+  gap: 20px;
+}
+
+.sidebar-brand p,
+.sidebar-brand small,
+.status-line,
+.workspace-footer {
+  color: #94a3b8;
+}
+
+.sidebar-nav {
+  display: grid;
+  gap: 8px;
+}
+
+.sidebar-nav button,
+.logout-button {
+  text-align: left;
+}
+
+.sidebar-nav button.active {
+  border-color: rgba(56, 189, 248, 0.8);
+  background: rgba(14, 116, 144, 0.22);
+}
+
+.sidebar-controls {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+}
+
+.workspace {
+  padding: 24px;
+  display: grid;
+  grid-template-rows: 1fr auto;
+  gap: 16px;
+  min-height: 100vh;
+}
+
+.live-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(320px, 0.8fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.live-side-stack {
+  display: grid;
+  gap: 16px;
+}
+
+.live-toolbar {
+  display: grid;
+  gap: 12px;
+  justify-items: end;
+}
+
+.focus-panel,
+.alarm-feed,
+.playback-panel {
+  min-height: auto;
+}
+
+.focus-panel {
+  padding: 16px;
+  background: rgba(15, 23, 42, 0.88);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 18px;
+}
+
+.focus-panel.empty {
+  min-height: 220px;
+  display: grid;
+  place-items: center;
+  color: #94a3b8;
+}
+
+.focus-header,
+.alarm-feed-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: start;
+  margin-bottom: 12px;
+}
+
+.focus-media video,
+.recording-player video {
+  width: 100%;
+  border-radius: 12px;
+  background: #020617;
+}
+
+.focus-media {
+  aspect-ratio: 16 / 10;
+}
+
+.alarm-feed {
+  padding: 16px;
+  background: rgba(15, 23, 42, 0.88);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 18px;
+  max-height: 360px;
+  overflow: hidden;
+}
+
+.alarm-list {
+  display: grid;
+  gap: 8px;
+  max-height: 260px;
+  overflow: auto;
+}
+
+.alarm-item {
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  background: rgba(2, 6, 23, 0.72);
+}
+
+.alarm-item p {
+  margin: 4px 0 0;
+  color: #cbd5e1;
+}
+
+.alarm-warning {
+  border-color: rgba(251, 191, 36, 0.35);
+}
+
+.alarm-critical {
+  border-color: rgba(248, 113, 113, 0.45);
+}
+
+.playback-layout {
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  gap: 16px;
+}
+
+.recording-list {
+  display: grid;
+  gap: 8px;
+  max-height: 520px;
+  overflow: auto;
+}
+
+.recording-item {
+  text-align: left;
+  display: grid;
+  gap: 4px;
+}
+
+.recording-item.active {
+  border-color: rgba(56, 189, 248, 0.8);
+  background: rgba(14, 116, 144, 0.22);
+}
+
+.recording-meta {
+  display: flex;
+  gap: 12px;
+  margin-top: 8px;
+  color: #94a3b8;
+}
+
+.camera-tile {
+  position: relative;
+}
+
+.camera-badge {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  padding: 4px 6px;
+  border-radius: 999px;
+  background: rgba(2, 6, 23, 0.72);
+  color: #67e8f9;
+}
+
+.panel {
+  padding: 20px;
+  min-height: auto;
+}
+
+@media (max-width: 1400px) {
+  .live-workspace,
+  .playback-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+.panel-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: start;
+  margin-bottom: 18px;
+}
+
+.panel-header p {
+  margin: 8px 0 0;
+  color: #94a3b8;
+  max-width: 70ch;
+}
+
+.pager {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.camera-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.camera-tile {
+  padding: 0;
+  overflow: hidden;
+  background: rgba(2, 6, 23, 0.8);
+}
+
+.camera-tile.selected {
+  border-color: rgba(56, 189, 248, 0.95);
+  box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.4);
+}
+
+.camera-media {
+  aspect-ratio: 16 / 10;
+  background: #020617;
+}
+
+.camera-media video,
+.camera-media img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.camera-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px;
+  font-size: 0.86rem;
+}
+
+.camera-meta small {
+  color: #64748b;
+}
+
+.placeholder-card {
+  padding: 20px;
+}
+
+code {
+  color: #7dd3fc;
+}
+
+@media (max-width: 1100px) {
+  .app-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar {
+    border-right: 0;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.14);
+  }
+}
