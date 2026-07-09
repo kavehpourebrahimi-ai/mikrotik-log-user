@@ -1,44 +1,35 @@
-# Shinobi Client
+# Shinobi Operator Desk
 
-Windows desktop client for a remote **Shinobi** VMS server.
+Lightweight **Windows client** for security guards and control-room operators connecting to a remote **Shinobi** server.
 
-## Why this project
+## Design goal
 
-- Keep **Shinobi on Linux** for recording, ONVIF ingest, and storage at scale.
-- Give operators a **native Windows workstation app** for live view and control.
-- Optimize for large deployments by decoding only visible camera tiles.
+- **Server on Linux** handles recording, storage, and camera ingest.
+- **Client on weak Windows PCs** handles monitoring, playback, and event response.
+- No expensive Shinobi Go license required for basic operator workflows.
 
-## Recommended stack
+## Performance modes
 
-| Layer | Choice |
-| --- | --- |
-| Server | [Shinobi on GitLab](https://gitlab.com/Shinobi-Systems/Shinobi) |
-| Client shell | Tauri 2 + React + TypeScript |
-| Live video | HLS via `hls.js` (phase 1), FLV/WebRTC later |
-| Realtime events | Socket.io (`f: init`) |
-| State | Zustand |
+| Mode | Best for | Behavior |
+| --- | --- | --- |
+| **Eco** | Weak PCs, old hardware | Snapshot refresh in grid, live video only in focus panel |
+| **Balanced** | Normal workstations | Selected tile streams live, others use snapshots |
+| **Performance** | Strong PCs | Live HLS on all visible tiles |
 
-Do **not** use lightNVR as the backend for 256-camera enterprise deployments. It is optimized for edge/home use, not large VMS workloads.
+Default is **Eco** so the client stays responsive even on low-end operator machines.
 
-## Current features
+## Current features (v0.2.0)
 
-- Connect to a Shinobi server with email/password
-- Load monitor list from `/monitor/{groupKey}`
-- Live grid with pagination (64 cameras per page)
-- Lazy stream activation with intersection observer
-- Socket.io connection for server events
+- Operator login to Shinobi server
+- Camera search and paginated live grid
+- Focus panel for one full live stream
+- Snapshot-based grid mode for weak systems
+- Recording list and playback for selected camera
+- Live event feed via Socket.io
 - Saved server profiles
+- Lazy-loaded HLS decoder (smaller startup bundle)
 
-## Planned features
-
-- Recording browser and timeline playback
-- Sub-account and permission management
-- PTZ and alarm panels
-- Multi-server switching
-- Hardware-accelerated decoding on Windows
-- MSI installer and auto-update
-
-## Development
+## Run locally
 
 ```bash
 cd shinobi-windows-client
@@ -46,21 +37,26 @@ npm install
 npm run dev
 ```
 
-For the desktop shell on Windows:
+Windows desktop shell:
 
 ```bash
 npm run tauri dev
 npm run tauri build
 ```
 
-## Shinobi API references used
+## Recommended deployment
 
-- Login: `POST /?json=true`
-- Monitors: `GET /{auth}/monitor/{ke}`
-- Live HLS: `GET /{auth}/hls/{ke}/{mid}/s.m3u8`
-- Videos: `GET /{auth}/videos/{ke}/{mid}`
-- Socket.io init: emit `{ f: "init", ke, auth, uid }`
+```
+[256 IP Cameras] -> [Linux Shinobi Server] <-VPN/LAN-> [Windows Operator PCs]
+```
 
-## Build target
+Use **Eco** mode on weak operator PCs. Use **Balanced** or **Performance** only on stronger control-room workstations.
 
-Primary target is **Windows 10/11 x64**. The same UI can also be built for Linux/macOS with Tauri if needed.
+## Next steps
+
+- User and permission management
+- PTZ controls in focus panel
+- Alarm acknowledgement workflow
+- Multi-server switching
+- Hardware video decode on Windows
+- Branded MSI installer

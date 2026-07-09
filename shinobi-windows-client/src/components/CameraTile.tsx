@@ -1,30 +1,50 @@
 import { useEffect, useRef, useState } from "react";
-import Hls from "hls.js";
+import { useHlsPlayer } from "../hooks/useHlsPlayer";
+import { useSnapshotRefresh } from "../hooks/useSnapshotRefresh";
+import { buildSnapshotUrl } from "../lib/shinobi/urls";
+import type { PerformanceMode } from "../store/settings";
 import type { ShinobiSession } from "../lib/shinobi/types";
-import { buildSnapshotUrl, buildStreamUrl } from "../lib/shinobi/urls";
 
 interface CameraTileProps {
   session: ShinobiSession;
   monitorId: string;
   name: string;
-  active: boolean;
   selected: boolean;
+  performanceMode: PerformanceMode;
+  snapshotIntervalMs: number;
   onSelect: () => void;
+}
+
+function shouldStreamTile(
+  performanceMode: PerformanceMode,
+  selected: boolean,
+  visible: boolean,
+) {
+  if (!visible) return false;
+  if (performanceMode === "performance") return true;
+  if (performanceMode === "balanced") return selected;
+  return false;
 }
 
 export function CameraTile({
   session,
   monitorId,
   name,
-  active,
   selected,
+  performanceMode,
+  snapshotIntervalMs,
   onSelect,
 }: CameraTileProps) {
-  const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLButtonElement>(null);
-  const hlsRef = useRef<Hls | null>(null);
   const [visible, setVisible] = useState(false);
-  const [streamError, setStreamError] = useState(false);
+  const streamEnabled = shouldStreamTile(performanceMode, selected, visible);
+  const videoRef = useHlsPlayer(session, monitorId, streamEnabled);
+  const snapshotUrl = useSnapshotRefresh(
+    session,
+    monitorId,
+    !streamEnabled && visible,
+    snapshotIntervalMs,
+  );
 
   useEffect(() => {
     const node = containerRef.current;
@@ -34,54 +54,14 @@ export function CameraTile({
       (entries) => {
         setVisible(entries.some((entry) => entry.isIntersecting));
       },
-      { rootMargin: "120px" },
+      { rootMargin: "80px" },
     );
 
     observer.observe(node);
     return () => observer.disconnect();
   }, []);
 
-  useEffect(() => {
-    const video = videoRef.current;
-    if (!video || !active || !visible) {
-      hlsRef.current?.destroy();
-      hlsRef.current = null;
-      if (video) {
-        video.removeAttribute("src");
-        video.load();
-      }
-      return;
-    }
-
-    const streamUrl = buildStreamUrl(session, monitorId, "hls");
-    setStreamError(false);
-
-    if (Hls.isSupported()) {
-      const hls = new Hls({
-        enableWorker: true,
-        lowLatencyMode: true,
-        backBufferLength: 30,
-        maxBufferLength: 15,
-      });
-      hlsRef.current = hls;
-      hls.loadSource(streamUrl);
-      hls.attachMedia(video);
-      hls.on(Hls.Events.ERROR, (_event, data) => {
-        if (data.fatal) {
-          setStreamError(true);
-        }
-      });
-      return () => {
-        hls.destroy();
-        hlsRef.current = null;
-      };
-    }
-
-    video.src = streamUrl;
-    return undefined;
-  }, [active, monitorId, session, visible]);
-
-  const snapshotUrl = buildSnapshotUrl(session, monitorId);
+  const fallbackSnapshot = buildSnapshotUrl(session, monitorId);
 
   return (
     <button
@@ -91,16 +71,21 @@ export function CameraTile({
       onClick={onSelect}
     >
       <div className="camera-media">
-        {active && visible && !streamError ? (
+        {streamEnabled ? (
           <video ref={videoRef} muted autoPlay playsInline />
-        ) : (
+        ) : visible ? (
           <img src={snapshotUrl} alt={name} loading="lazy" />
+        ) : (
+          <img src={fallbackSnapshot} alt={name} loading="lazy" />
         )}
       </div>
       <div className="camera-meta">
         <span>{name}</span>
         <small>{monitorId}</small>
       </div>
+      {performanceMode === "eco" ? (
+        <span className="camera-badge">ECO</span>
+      ) : null}
     </button>
   );
 }

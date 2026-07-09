@@ -2,11 +2,13 @@ import {
   normalizeServerUrl,
 } from "./urls";
 import type {
+  ShinobiEvent,
   ShinobiLoginResponse,
   ShinobiMonitor,
   ShinobiSession,
   ShinobiUserInfo,
   ShinobiVideo,
+  ShinobiVideoListResponse,
 } from "./types";
 
 export class ShinobiApiError extends Error {
@@ -115,12 +117,42 @@ export class ShinobiClient {
     return Array.isArray(payload) ? payload : [payload];
   }
 
-  async listVideos(monitorId?: string): Promise<ShinobiVideo[]> {
+  async listVideos(
+    monitorId?: string,
+    limit = "50",
+  ): Promise<ShinobiVideoListResponse> {
+    const query = limit ? `?limit=${encodeURIComponent(limit)}` : "";
     const path = monitorId
-      ? `/videos/${this.session.groupKey}/${monitorId}`
-      : `/videos/${this.session.groupKey}`;
-    const payload = await this.getJson<ShinobiVideo | ShinobiVideo[]>(path);
+      ? `/videos/${this.session.groupKey}/${monitorId}${query}`
+      : `/videos/${this.session.groupKey}${query}`;
+    const payload = await this.getJson<
+      ShinobiVideoListResponse | ShinobiVideo | ShinobiVideo[]
+    >(path);
+
+    if (Array.isArray(payload)) {
+      return { total: payload.length, limit: payload.length, skip: 0, videos: payload };
+    }
+
+    if ("videos" in payload) {
+      return payload;
+    }
+
+    return { total: 1, limit: 1, skip: 0, videos: [payload] };
+  }
+
+  async listEvents(monitorId?: string, limit = "30"): Promise<ShinobiEvent[]> {
+    const path = monitorId
+      ? `/events/${this.session.groupKey}/${monitorId}/${limit}`
+      : `/events/${this.session.groupKey}`;
+    const payload = await this.getJson<ShinobiEvent | ShinobiEvent[]>(path);
     return Array.isArray(payload) ? payload : [payload];
+  }
+
+  videoUrl(video: ShinobiVideo): string {
+    if (video.href) {
+      return `${this.session.serverUrl}${video.href}`;
+    }
+    return `${this.session.serverUrl}/${this.session.authToken}/videos/${this.session.groupKey}/${video.mid}/${video.time}.${video.ext}`;
   }
 
   async ptzControl(monitorId: string, direction: string): Promise<void> {

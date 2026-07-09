@@ -1,8 +1,14 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ShinobiSocket } from "../lib/shinobi/socket";
+import { mapSocketEventToAlarm, useAlarmStore } from "../store/alarms";
 import { paginateMonitors, useMonitorStore } from "../store/monitors";
+import { PERFORMANCE_PRESETS } from "../store/settings";
+import { useSettingsStore } from "../store/settingsStore";
 import { useSessionStore } from "../store/session";
+import { AlarmFeed } from "./AlarmFeed";
+import { FocusView } from "./FocusView";
 import { LiveGrid } from "./LiveGrid";
+import { PlaybackPanel } from "./PlaybackPanel";
 
 const socket = new ShinobiSocket();
 
@@ -16,15 +22,29 @@ export function Shell() {
   const setError = useMonitorStore((state) => state.setError);
   const gridSize = useMonitorStore((state) => state.gridSize);
   const setGridSize = useMonitorStore((state) => state.setGridSize);
-  const pageSize = useMonitorStore((state) => state.pageSize);
   const page = useMonitorStore((state) => state.page);
   const selectedMonitorId = useMonitorStore((state) => state.selectedMonitorId);
-
-  const [activeTab, setActiveTab] = useState<"live" | "playback" | "users">(
-    "live",
+  const setSelectedMonitorId = useMonitorStore(
+    (state) => state.setSelectedMonitorId,
   );
+
+  const performanceMode = useSettingsStore((state) => state.performanceMode);
+  const setPerformanceMode = useSettingsStore(
+    (state) => state.setPerformanceMode,
+  );
+  const snapshotIntervalMs = useSettingsStore(
+    (state) => state.snapshotIntervalMs,
+  );
+  const setSnapshotIntervalMs = useSettingsStore(
+    (state) => state.setSnapshotIntervalMs,
+  );
+  const pageSize = useSettingsStore((state) => state.pageSize);
+  const setPageSize = useSettingsStore((state) => state.setPageSize);
+
+  const pushAlarm = useAlarmStore((state) => state.pushAlarm);
+
+  const [activeTab, setActiveTab] = useState<"live" | "playback">("live");
   const [socketConnected, setSocketConnected] = useState(false);
-  const [lastEvent, setLastEvent] = useState<string>("Waiting for events...");
 
   useEffect(() => {
     if (!client || !session) return;
@@ -40,9 +60,7 @@ export function Shell() {
         }
       })
       .catch((error: Error) => {
-        if (!cancelled) {
-          setError(error.message);
-        }
+        if (!cancelled) setError(error.message);
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -50,9 +68,14 @@ export function Shell() {
 
     socket.connect(session, (event) => {
       setSocketConnected(true);
-      if (event.f) {
-        setLastEvent(`${event.f} @ ${new Date().toLocaleTimeString()}`);
-      }
+      const monitor = useMonitorStore
+        .getState()
+        .monitors.find((entry) => entry.mid === String(event.mid));
+      const alarm = mapSocketEventToAlarm(
+        event as Record<string, unknown>,
+        monitor?.name,
+      );
+      if (alarm) pushAlarm(alarm);
     });
 
     return () => {
@@ -60,17 +83,18 @@ export function Shell() {
       socket.disconnect();
       setSocketConnected(false);
     };
-  }, [client, session, setError, setLoading, setMonitors]);
+  }, [client, session, setError, setLoading, setMonitors, pushAlarm]);
 
-  const selectedMonitor = monitors.find(
-    (monitor) => monitor.mid === selectedMonitorId,
+  const selectedMonitor = useMemo(
+    () => monitors.find((monitor) => monitor.mid === selectedMonitorId) ?? null,
+    [monitors, selectedMonitorId],
   );
 
   return (
     <div className="app-shell">
       <aside className="sidebar">
         <div className="sidebar-brand">
-          <p className="eyebrow">Connected</p>
+          <p className="eyebrow">Operator Desk</p>
           <h1>Shinobi Client</h1>
           <p>{session?.mail}</p>
           <small>{session?.serverUrl}</small>
@@ -82,7 +106,7 @@ export function Shell() {
             className={activeTab === "live" ? "active" : ""}
             onClick={() => setActiveTab("live")}
           >
-            Live
+            Live Control
           </button>
           <button
             type="button"
@@ -91,22 +115,59 @@ export function Shell() {
           >
             Playback
           </button>
-          <button
-            type="button"
-            className={activeTab === "users" ? "active" : ""}
-            onClick={() => setActiveTab("users")}
-          >
-            Users
-          </button>
         </nav>
 
         <div className="sidebar-controls">
+          <label>
+            Performance mode
+            <select
+              value={performanceMode}
+              onChange={(event) =>
+                setPerformanceMode(
+                  event.target.value as typeof performanceMode,
+                )
+              }
+            >
+              {Object.entries(PERFORMANCE_PRESETS).map(([key, preset]) => (
+                <option key={key} value={key}>
+                  {preset.label}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label>
+            Snapshot refresh (ms)
+            <input
+              type="number"
+              min={1000}
+              step={500}
+              value={snapshotIntervalMs}
+              onChange={(event) =>
+                setSnapshotIntervalMs(Number(event.target.value))
+              }
+            />
+          </label>
+
+          <label>
+            Cameras per page
+            <select
+              value={pageSize}
+              onChange={(event) => setPageSize(Number(event.target.value))}
+            >
+              <option value={8}>8</option>
+              <option value={16}>16</option>
+              <option value={32}>32</option>
+              <option value={64}>64</option>
+            </select>
+          </label>
+
           <label>
             Grid density
             <select
               value={gridSize}
               onChange={(event) =>
-                setGridSize(Number(event.target.value) as 4 | 6 | 8 | 10 | 16)
+                setGridSize(Number(event.target.value) as typeof gridSize)
               }
             >
               <option value={4}>2 x 2</option>
@@ -116,11 +177,11 @@ export function Shell() {
               <option value={16}>4 x 4</option>
             </select>
           </label>
+
           <p className="status-line">
             Socket: {socketConnected ? "connected" : "connecting"}
           </p>
           <p className="status-line">Cameras: {monitors.length}</p>
-          <p className="status-line">{lastEvent}</p>
         </div>
 
         <button type="button" className="logout-button" onClick={logout}>
@@ -129,62 +190,29 @@ export function Shell() {
       </aside>
 
       <main className="workspace">
-        {activeTab === "live" ? <LiveGrid /> : null}
-
-        {activeTab === "playback" ? (
-          <section className="panel">
-            <header className="panel-header">
-              <div>
-                <h2>Playback</h2>
-                <p>
-                  Recording list and timeline playback will attach to the
-                  selected camera through Shinobi&apos;s video APIs.
-                </p>
-              </div>
-            </header>
-            <div className="placeholder-card">
-              {selectedMonitor ? (
-                <>
-                  <strong>{selectedMonitor.name}</strong>
-                  <p>Monitor ID: {selectedMonitor.mid}</p>
-                  <p>
-                    Next step: load recordings from
-                    <code> /videos/{session?.groupKey}/{selectedMonitor.mid}</code>
-                  </p>
-                </>
-              ) : (
-                <p>Select a camera from Live View to prepare playback.</p>
-              )}
+        {activeTab === "live" ? (
+          <div className="live-workspace">
+            <LiveGrid />
+            <div className="live-side-stack">
+              <FocusView
+                session={session!}
+                monitor={selectedMonitor}
+                onClose={() => setSelectedMonitorId(null)}
+              />
+              <AlarmFeed />
             </div>
-          </section>
+          </div>
         ) : null}
 
-        {activeTab === "users" ? (
-          <section className="panel">
-            <header className="panel-header">
-              <div>
-                <h2>Users</h2>
-                <p>
-                  Operator and sub-account management will use Shinobi register
-                  and admin APIs with role-aware permissions.
-                </p>
-              </div>
-            </header>
-            <div className="placeholder-card">
-              <p>Current operator: {session?.mail}</p>
-              <p>Group key: {session?.groupKey}</p>
-              <p>
-                Next step: expose sub-account CRUD through
-                <code> /register/{session?.groupKey}/...</code>
-              </p>
-            </div>
-          </section>
+        {activeTab === "playback" && client ? (
+          <PlaybackPanel client={client} monitor={selectedMonitor} />
         ) : null}
 
         <footer className="workspace-footer">
           <span>
-            Page {page + 1} · {paginateMonitors(monitors, page, pageSize).length}{" "}
-            visible streams · {monitors.length} total cameras
+            Mode: {PERFORMANCE_PRESETS[performanceMode].label} · Page {page + 1}{" "}
+            · {paginateMonitors(monitors, page, pageSize).length} visible ·{" "}
+            {monitors.length} total cameras
           </span>
         </footer>
       </main>

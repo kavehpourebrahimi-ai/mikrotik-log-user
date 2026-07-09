@@ -170,11 +170,160 @@ button:disabled {
   display: grid;
   grid-template-rows: 1fr auto;
   gap: 16px;
+  min-height: 100vh;
+}
+
+.live-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(320px, 0.8fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.live-side-stack {
+  display: grid;
+  gap: 16px;
+}
+
+.live-toolbar {
+  display: grid;
+  gap: 12px;
+  justify-items: end;
+}
+
+.focus-panel,
+.alarm-feed,
+.playback-panel {
+  min-height: auto;
+}
+
+.focus-panel {
+  padding: 16px;
+  background: rgba(15, 23, 42, 0.88);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 18px;
+}
+
+.focus-panel.empty {
+  min-height: 220px;
+  display: grid;
+  place-items: center;
+  color: #94a3b8;
+}
+
+.focus-header,
+.alarm-feed-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: start;
+  margin-bottom: 12px;
+}
+
+.focus-media video,
+.recording-player video {
+  width: 100%;
+  border-radius: 12px;
+  background: #020617;
+}
+
+.focus-media {
+  aspect-ratio: 16 / 10;
+}
+
+.alarm-feed {
+  padding: 16px;
+  background: rgba(15, 23, 42, 0.88);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 18px;
+  max-height: 360px;
+  overflow: hidden;
+}
+
+.alarm-list {
+  display: grid;
+  gap: 8px;
+  max-height: 260px;
+  overflow: auto;
+}
+
+.alarm-item {
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  background: rgba(2, 6, 23, 0.72);
+}
+
+.alarm-item p {
+  margin: 4px 0 0;
+  color: #cbd5e1;
+}
+
+.alarm-warning {
+  border-color: rgba(251, 191, 36, 0.35);
+}
+
+.alarm-critical {
+  border-color: rgba(248, 113, 113, 0.45);
+}
+
+.playback-layout {
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  gap: 16px;
+}
+
+.recording-list {
+  display: grid;
+  gap: 8px;
+  max-height: 520px;
+  overflow: auto;
+}
+
+.recording-item {
+  text-align: left;
+  display: grid;
+  gap: 4px;
+}
+
+.recording-item.active {
+  border-color: rgba(56, 189, 248, 0.8);
+  background: rgba(14, 116, 144, 0.22);
+}
+
+.recording-meta {
+  display: flex;
+  gap: 12px;
+  margin-top: 8px;
+  color: #94a3b8;
+}
+
+.camera-tile {
+  position: relative;
+}
+
+.camera-badge {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  padding: 4px 6px;
+  border-radius: 999px;
+  background: rgba(2, 6, 23, 0.72);
+  color: #67e8f9;
 }
 
 .panel {
   padding: 20px;
-  min-height: calc(100vh - 120px);
+  min-height: auto;
+}
+
+@media (max-width: 1400px) {
+  .live-workspace,
+  .playback-layout {
+    grid-template-columns: 1fr;
+  }
 }
 
 .panel-header {

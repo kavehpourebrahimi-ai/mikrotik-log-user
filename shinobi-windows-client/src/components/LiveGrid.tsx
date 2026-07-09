@@ -1,6 +1,8 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { paginateMonitors, useMonitorStore } from "../store/monitors";
+import { useSettingsStore } from "../store/settingsStore";
 import { useSessionStore } from "../store/session";
+import { PERFORMANCE_PRESETS } from "../store/settings";
 import { CameraTile } from "./CameraTile";
 
 export function LiveGrid() {
@@ -8,19 +10,35 @@ export function LiveGrid() {
   const monitors = useMonitorStore((state) => state.monitors);
   const gridSize = useMonitorStore((state) => state.gridSize);
   const page = useMonitorStore((state) => state.page);
-  const pageSize = useMonitorStore((state) => state.pageSize);
   const selectedMonitorId = useMonitorStore((state) => state.selectedMonitorId);
   const setSelectedMonitorId = useMonitorStore(
     (state) => state.setSelectedMonitorId,
   );
   const setPage = useMonitorStore((state) => state.setPage);
+  const performanceMode = useSettingsStore((state) => state.performanceMode);
+  const snapshotIntervalMs = useSettingsStore(
+    (state) => state.snapshotIntervalMs,
+  );
+  const pageSize = useSettingsStore((state) => state.pageSize);
+
+  const [search, setSearch] = useState("");
+
+  const filteredMonitors = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    if (!query) return monitors;
+    return monitors.filter(
+      (monitor) =>
+        monitor.name.toLowerCase().includes(query) ||
+        monitor.mid.toLowerCase().includes(query),
+    );
+  }, [monitors, search]);
 
   const visibleMonitors = useMemo(
-    () => paginateMonitors(monitors, page, pageSize),
-    [monitors, page, pageSize],
+    () => paginateMonitors(filteredMonitors, page, pageSize),
+    [filteredMonitors, page, pageSize],
   );
 
-  const totalPages = Math.max(1, Math.ceil(monitors.length / pageSize));
+  const totalPages = Math.max(1, Math.ceil(filteredMonitors.length / pageSize));
 
   if (!session) return null;
 
@@ -30,28 +48,38 @@ export function LiveGrid() {
         <div>
           <h2>Live View</h2>
           <p>
-            Showing {visibleMonitors.length} of {monitors.length} cameras. Only
-            visible tiles decode video to keep the client responsive at scale.
+            {PERFORMANCE_PRESETS[performanceMode].description} Showing{" "}
+            {visibleMonitors.length} of {filteredMonitors.length} cameras.
           </p>
         </div>
-        <div className="pager">
-          <button
-            type="button"
-            disabled={page === 0}
-            onClick={() => setPage(Math.max(0, page - 1))}
-          >
-            Previous
-          </button>
-          <span>
-            Page {page + 1} / {totalPages}
-          </span>
-          <button
-            type="button"
-            disabled={page + 1 >= totalPages}
-            onClick={() => setPage(page + 1)}
-          >
-            Next
-          </button>
+        <div className="live-toolbar">
+          <input
+            value={search}
+            onChange={(event) => {
+              setSearch(event.target.value);
+              setPage(0);
+            }}
+            placeholder="Search camera name or ID"
+          />
+          <div className="pager">
+            <button
+              type="button"
+              disabled={page === 0}
+              onClick={() => setPage(Math.max(0, page - 1))}
+            >
+              Previous
+            </button>
+            <span>
+              Page {page + 1} / {totalPages}
+            </span>
+            <button
+              type="button"
+              disabled={page + 1 >= totalPages}
+              onClick={() => setPage(page + 1)}
+            >
+              Next
+            </button>
+          </div>
         </div>
       </header>
 
@@ -65,8 +93,9 @@ export function LiveGrid() {
             session={session}
             monitorId={monitor.mid}
             name={monitor.name}
-            active
             selected={selectedMonitorId === monitor.mid}
+            performanceMode={performanceMode}
+            snapshotIntervalMs={snapshotIntervalMs}
             onSelect={() => setSelectedMonitorId(monitor.mid)}
           />
         ))}

@@ -27,11 +27,38 @@ export interface ShinobiVideo {
   mid: string;
   ke: string;
   ext: string;
-  time: number;
+  time: string | number;
+  end?: string | number;
   duration?: number;
   size?: number;
   status?: number;
-  details?: string;
+  details?: string | Record<string, unknown>;
+  href?: string;
+  links?: Record<string, string>;
+}
+
+export interface ShinobiVideoListResponse {
+  total: number;
+  limit: number;
+  skip: number;
+  isUTC?: boolean;
+  videos: ShinobiVideo[];
+}
+
+export interface ShinobiEvent {
+  ke: string;
+  mid: string;
+  time: string | number;
+  details?: string | Record<string, unknown>;
+}
+
+export interface ShinobiAlarmItem {
+  id: string;
+  time: string;
+  monitorId: string;
+  monitorName?: string;
+  message: string;
+  level: "info" | "warning" | "critical";
 }
 
 export interface ShinobiLoginResponse {

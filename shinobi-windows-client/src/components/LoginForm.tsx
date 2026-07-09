@@ -13,7 +13,7 @@ export function LoginForm() {
   );
   const [mail, setMail] = useState("");
   const [password, setPassword] = useState("");
-  const [serverLabel, setServerLabel] = useState("Production Shinobi");
+  const [serverLabel, setServerLabel] = useState("Operations Center");
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
@@ -25,16 +25,17 @@ export function LoginForm() {
     <div className="login-shell">
       <form className="login-card" onSubmit={handleSubmit}>
         <div className="brand-block">
-          <p className="eyebrow">Enterprise VMS Client</p>
-          <h1>Shinobi Client</h1>
+          <p className="eyebrow">Security Operations Client</p>
+          <h1>Shinobi Operator Desk</h1>
           <p>
-            Connect to your Linux Shinobi server for live view, playback, and
-            operator workflows without running the NVR on Windows.
+            Lightweight Windows client for security guards and control-room
+            operators. The Shinobi server records on Linux. This workstation only
+            monitors, reviews, and manages.
           </p>
         </div>
 
         <label>
-          Server URL
+          Shinobi Server URL
           <input
             value={serverUrl}
             onChange={(event) => setServerUrl(event.target.value)}
@@ -44,16 +45,16 @@ export function LoginForm() {
         </label>
 
         <label>
-          Server Label
+          Site Label
           <input
             value={serverLabel}
             onChange={(event) => setServerLabel(event.target.value)}
-            placeholder="Production Shinobi"
+            placeholder="Operations Center"
           />
         </label>
 
         <label>
-          Email
+          Operator Email
           <input
             type="email"
             value={mail}
@@ -75,7 +76,7 @@ export function LoginForm() {
         {error ? <p className="form-error">{error}</p> : null}
 
         <button type="submit" disabled={status === "connecting"}>
-          {status === "connecting" ? "Connecting..." : "Connect"}
+          {status === "connecting" ? "Connecting..." : "Enter Control Room"}
         </button>
 
         {savedServers.length > 0 ? (
