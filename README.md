@@ -82,11 +82,14 @@ Windows binaries on each push/PR:
 
 - `vms_server.exe`
 - `vms_client.exe`
+- `EnterpriseVmsSetup.exe` (Windows installer)
+- runtime DLL files and startup scripts
 
 In GitHub:
 1. Open **Actions**.
 2. Select **Windows Artifacts** run.
 3. Download artifact **enterprise-vms-windows-executables**.
+4. Run `EnterpriseVmsSetup.exe` for installation.
 
 ## Mandatory Requirements (Roadmap)
 

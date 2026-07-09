@@ -109,3 +109,9 @@ Release binaries and uploads downloadable artifacts:
 
 - `vms_server.exe`
 - `vms_client.exe`
+- `EnterpriseVmsSetup.exe`
+
+Installer package also includes:
+- MinGW runtime DLLs
+- default `config\vms-server.conf`
+- `scripts\start-server.cmd` and `scripts\start-client.cmd`
