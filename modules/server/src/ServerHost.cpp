@@ -42,6 +42,7 @@ ServerHost::ServerHost() {
     auto storageManager = std::make_shared<StorageManager>();
     auto streamPipeline = std::make_shared<StreamPipeline>();
     auto eventBus = std::make_shared<EventBus>();
+    auto onvifDiscovery = std::make_shared<OnvifDiscovery>();
 
     try {
         apiPort_ = std::stoi(config.get("api.port", "8080"));
@@ -62,7 +63,7 @@ ServerHost::ServerHost() {
     registry_.registerService<IAuthorizationService>(std::make_shared<AuthorizationService>());
     registry_.registerService<IEventBus>(eventBus);
     registry_.registerService<IEventEngine>(std::make_shared<EventEngine>(*eventBus));
-    registry_.registerService<IOnvifDiscovery>(std::make_shared<OnvifDiscovery>());
+    registry_.registerService<IOnvifDiscovery>(onvifDiscovery);
     registry_.registerService<IPluginHost>(std::make_shared<PluginHost>(*eventBus));
 }
 
@@ -79,17 +80,24 @@ void ServerHost::start() {
     auto recordingEngine = registry_.resolve<IRecordingEngine>();
     auto storageManager = registry_.resolve<IStorageManager>();
     auto authenticationService = registry_.resolve<IAuthenticationService>();
+    auto onvifDiscovery = registry_.resolve<IOnvifDiscovery>();
 
-    if (!cameraRepository || !recordingEngine || !storageManager || !authenticationService) {
+    if (!cameraRepository || !recordingEngine || !storageManager || !authenticationService || !onvifDiscovery) {
         logger().log(LogLevel::Error, "ServerHost", "Failed to resolve core services");
         return;
     }
+
+    auto config = Config::fromFile("vms-server.conf");
+    const auto storageRoot = config.get("storage.root", "./vms-data");
+    const auto auditLog = std::filesystem::path(storageRoot) / "audit.log";
 
     apiServer_ = std::make_unique<HttpApiServer>(
         std::move(cameraRepository),
         std::move(recordingEngine),
         std::move(storageManager),
         std::move(authenticationService),
+        std::move(onvifDiscovery),
+        auditLog,
         apiPort_);
     const auto apiStartResult = apiServer_->start();
     if (!apiStartResult.ok()) {

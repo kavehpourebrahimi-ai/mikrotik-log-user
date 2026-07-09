@@ -145,7 +145,9 @@ void ClientApp::showMainMenu() {
         std::cout << "5) Start recording\n";
         std::cout << "6) Stop recording\n";
         std::cout << "7) Recording status\n";
-        std::cout << "8) Storage volumes\n";
+        std::cout << "8) Recording files\n";
+        std::cout << "9) ONVIF discover\n";
+        std::cout << "10) Storage volumes\n";
         std::cout << "0) Exit\n";
 
         const auto choice = prompt("Select: ");
@@ -164,6 +166,10 @@ void ClientApp::showMainMenu() {
         } else if (choice == "7") {
             showRecordingStatus();
         } else if (choice == "8") {
+            listRecordingFiles();
+        } else if (choice == "9") {
+            discoverOnvifCameras();
+        } else if (choice == "10") {
             showStorageVolumes();
         } else if (choice == "0") {
             return;
@@ -354,6 +360,59 @@ void ClientApp::stopRecording() {
 void ClientApp::showStorageVolumes() const {
     httplib::Client client(serverUrl_);
     auto response = sendJsonRequest(client, "GET", "/api/v1/storage/volumes", accessToken_);
+    if (!response || !*response) {
+        std::cout << "Request failed.\n";
+        return;
+    }
+    if ((*response)->status == 401) {
+        handleUnauthorizedAndRetry();
+        return;
+    }
+    std::cout << (*response)->body << '\n';
+}
+
+void ClientApp::listRecordingFiles() const {
+    const auto cameraId = prompt("Camera ID: ");
+    if (cameraId.empty()) {
+        std::cout << "Camera ID required.\n";
+        return;
+    }
+
+    httplib::Client client(serverUrl_);
+    auto response = sendJsonRequest(
+        client,
+        "GET",
+        "/api/v1/cameras/" + cameraId + "/record/files",
+        accessToken_);
+    if (!response || !*response) {
+        std::cout << "Request failed.\n";
+        return;
+    }
+    if ((*response)->status == 401) {
+        handleUnauthorizedAndRetry();
+        return;
+    }
+    std::cout << (*response)->body << '\n';
+}
+
+void ClientApp::discoverOnvifCameras() const {
+    const auto timeout = prompt("Discovery timeout ms (default 1500): ");
+    int timeoutMs = 1500;
+    if (!timeout.empty()) {
+        try {
+            timeoutMs = std::stoi(timeout);
+        } catch (...) {
+            timeoutMs = 1500;
+        }
+    }
+
+    httplib::Client client(serverUrl_);
+    auto response = sendJsonRequest(
+        client,
+        "POST",
+        "/api/v1/onvif/discover",
+        accessToken_,
+        json{{"timeoutMs", timeoutMs}});
     if (!response || !*response) {
         std::cout << "Request failed.\n";
         return;

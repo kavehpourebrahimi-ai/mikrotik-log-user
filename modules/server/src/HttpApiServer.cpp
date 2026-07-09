@@ -8,6 +8,8 @@
 #include <nlohmann/json.hpp>
 
 #include <chrono>
+#include <filesystem>
+#include <fstream>
 
 namespace vms {
 namespace {
@@ -45,11 +47,15 @@ HttpApiServer::HttpApiServer(
     std::shared_ptr<IRecordingEngine> recordingEngine,
     std::shared_ptr<IStorageManager> storageManager,
     std::shared_ptr<IAuthenticationService> authenticationService,
+    std::shared_ptr<IOnvifDiscovery> onvifDiscovery,
+    std::filesystem::path auditLogPath,
     int port)
     : cameraRepository_(std::move(cameraRepository)),
       recordingEngine_(std::move(recordingEngine)),
       storageManager_(std::move(storageManager)),
       authenticationService_(std::move(authenticationService)),
+      onvifDiscovery_(std::move(onvifDiscovery)),
+      auditLogPath_(std::move(auditLogPath)),
       port_(port),
       server_(std::make_unique<httplib::Server>()) {}
 
@@ -102,6 +108,7 @@ Result<void> HttpApiServer::start() {
             respondJson(res, 401, json{{"error", tokenResult.error}});
             return;
         }
+        writeAuditEntry("login", username, "success");
 
         respondJson(
             res,
@@ -172,6 +179,7 @@ Result<void> HttpApiServer::start() {
             respondJson(res, 400, json{{"error", upsertResult.error}});
             return;
         }
+        writeAuditEntry("camera_upsert", "api", camera.id.value);
 
         respondJson(res, 201, json{{"id", camera.id.value}, {"status", "created"}});
     });
@@ -191,6 +199,7 @@ Result<void> HttpApiServer::start() {
                 respondJson(res, 404, json{{"error", removeResult.error}});
                 return;
             }
+            writeAuditEntry("camera_remove", "api", cameraId.value);
 
             respondJson(res, 200, json{{"cameraId", cameraId.value}, {"status", "deleted"}});
         });
@@ -210,6 +219,7 @@ Result<void> HttpApiServer::start() {
                 respondJson(res, 400, json{{"error", result.error}});
                 return;
             }
+            writeAuditEntry("record_start", "api", cameraId.value);
 
             respondJson(res, 200, json{{"cameraId", cameraId.value}, {"recording", true}});
         });
@@ -229,6 +239,7 @@ Result<void> HttpApiServer::start() {
                 respondJson(res, 400, json{{"error", result.error}});
                 return;
             }
+            writeAuditEntry("record_stop", "api", cameraId.value);
 
             respondJson(res, 200, json{{"cameraId", cameraId.value}, {"recording", false}});
         });
@@ -279,6 +290,85 @@ Result<void> HttpApiServer::start() {
                 });
         });
 
+    server_->Get(
+        R"(/api/v1/cameras/([^/]+)/record/files)",
+        [this](const httplib::Request& req, httplib::Response& res) {
+            const auto token = extractBearerToken(req);
+            if (token.empty() || !authenticationService_->validateToken(token).ok()) {
+                respondJson(res, 401, json{{"error", "Unauthorized"}});
+                return;
+            }
+
+            const CameraId cameraId{req.matches[1]};
+            const auto cameraLookup = cameraRepository_->get(cameraId);
+            if (!cameraLookup.ok()) {
+                respondJson(res, 404, json{{"error", cameraLookup.error}});
+                return;
+            }
+
+            json files = json::array();
+            for (const auto& volume : storageManager_->listVolumes()) {
+                const auto cameraDir = std::filesystem::path(volume.mountPath) / cameraId.value;
+                if (!std::filesystem::exists(cameraDir)) {
+                    continue;
+                }
+                for (const auto& entry : std::filesystem::directory_iterator(cameraDir)) {
+                    if (!entry.is_regular_file()) {
+                        continue;
+                    }
+                    files.push_back({
+                        {"path", entry.path().string()},
+                        {"size_bytes", entry.file_size()},
+                        {"name", entry.path().filename().string()},
+                    });
+                }
+            }
+
+            respondJson(res, 200, json{{"cameraId", cameraId.value}, {"items", files}});
+        });
+
+    server_->Post("/api/v1/onvif/discover", [this](const httplib::Request& req, httplib::Response& res) {
+        const auto token = extractBearerToken(req);
+        if (token.empty() || !authenticationService_->validateToken(token).ok()) {
+            respondJson(res, 401, json{{"error", "Unauthorized"}});
+            return;
+        }
+
+        if (!onvifDiscovery_) {
+            respondJson(res, 500, json{{"error", "ONVIF discovery service unavailable"}});
+            return;
+        }
+
+        json payload = json::object();
+        if (!req.body.empty()) {
+            try {
+                payload = json::parse(req.body);
+            } catch (...) {
+                respondJson(res, 400, json{{"error", "Invalid JSON payload"}});
+                return;
+            }
+        }
+        const auto timeoutMs = payload.value("timeoutMs", 1500);
+        const auto result = onvifDiscovery_->discover(Duration{timeoutMs});
+        if (!result.ok()) {
+            respondJson(res, 400, json{{"error", result.error}});
+            return;
+        }
+
+        json items = json::array();
+        for (const auto& cam : *result.value) {
+            items.push_back({
+                {"id", cam.id.value},
+                {"name", cam.name},
+                {"host", cam.host},
+                {"mainStreamUri", cam.mainStreamUri},
+                {"subStreamUri", cam.subStreamUri},
+            });
+        }
+        writeAuditEntry("onvif_discover", "api", "count=" + std::to_string(items.size()));
+        respondJson(res, 200, json{{"items", items}});
+    });
+
     serverThread_ = std::thread([this]() {
         logger().log(
             LogLevel::Info,
@@ -291,6 +381,22 @@ Result<void> HttpApiServer::start() {
     });
 
     return Result<void>::success();
+}
+
+void HttpApiServer::writeAuditEntry(
+    std::string_view action,
+    std::string_view principal,
+    std::string_view details) const {
+    std::lock_guard lock(auditMutex_);
+    std::filesystem::create_directories(auditLogPath_.parent_path());
+    std::ofstream out(auditLogPath_, std::ios::app);
+    if (!out.is_open()) {
+        return;
+    }
+    const auto nowMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                           std::chrono::system_clock::now().time_since_epoch())
+                           .count();
+    out << nowMs << "," << action << "," << principal << "," << details << "\n";
 }
 
 void HttpApiServer::stop() {

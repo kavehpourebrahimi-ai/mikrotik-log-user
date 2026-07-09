@@ -32,6 +32,8 @@ private:
     void startRecording();
     void stopRecording();
     void showRecordingStatus() const;
+    void listRecordingFiles() const;
+    void discoverOnvifCameras() const;
     void showStorageVolumes() const;
 
     std::string serverUrl_;
