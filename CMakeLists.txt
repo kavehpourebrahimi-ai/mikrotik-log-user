@@ -1,0 +1,33 @@
+cmake_minimum_required(VERSION 3.20)
+project(EnterpriseVms VERSION 0.1.0 LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
+option(VMS_BUILD_TESTS "Build unit tests" ON)
+option(VMS_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" OFF)
+
+include(cmake/VmsOptions.cmake)
+include(cmake/VmsDependencies.cmake)
+
+add_subdirectory(modules/core)
+add_subdirectory(modules/common)
+add_subdirectory(modules/storage)
+add_subdirectory(modules/camera)
+add_subdirectory(modules/auth)
+add_subdirectory(modules/events)
+add_subdirectory(modules/streaming)
+add_subdirectory(modules/recording)
+add_subdirectory(modules/playback)
+add_subdirectory(modules/onvif)
+add_subdirectory(modules/api)
+add_subdirectory(modules/plugin-sdk)
+add_subdirectory(modules/server)
+add_subdirectory(modules/client)
+
+if(VMS_BUILD_TESTS)
+    enable_testing()
+    add_subdirectory(tests)
+endif()
