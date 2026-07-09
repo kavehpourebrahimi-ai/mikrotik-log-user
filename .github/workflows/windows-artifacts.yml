@@ -17,20 +17,27 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Configure (Release)
-        shell: pwsh
-        run: cmake -B build -G "Visual Studio 17 2022" -A x64 -DVMS_BUILD_TESTS=OFF
+      - name: Setup MSYS2 toolchain
+        uses: msys2/setup-msys2@v2
+        with:
+          update: true
+          install: >-
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-cmake
+            mingw-w64-x86_64-ninja
 
       - name: Build server and client
-        shell: pwsh
-        run: cmake --build build --config Release --parallel
+        shell: msys2 {0}
+        run: |
+          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DVMS_BUILD_TESTS=OFF -DCMAKE_CXX_COMPILER=g++
+          cmake --build build --parallel
 
       - name: Collect executables
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path artifacts | Out-Null
-          Copy-Item "build/modules/server/Release/vms_server.exe" "artifacts/vms_server.exe"
-          Copy-Item "build/modules/client/Release/vms_client.exe" "artifacts/vms_client.exe"
+          Copy-Item "build/modules/server/vms_server.exe" "artifacts/vms_server.exe"
+          Copy-Item "build/modules/client/vms_client.exe" "artifacts/vms_client.exe"
 
       - name: Upload server/client artifacts
         uses: actions/upload-artifact@v4
