@@ -1,6 +1,8 @@
 add_library(vms_storage STATIC
+    src/FileCameraRepository.cpp
     src/InMemoryCameraRepository.cpp
     src/LocalStorageProvider.cpp
+    src/SqliteCameraRepository.cpp
     src/StorageManager.cpp
 )
 
@@ -15,6 +17,8 @@ target_link_libraries(vms_storage
     PUBLIC
         Vms::Core
         Vms::Common
+        nlohmann_json::nlohmann_json
+        sqlite3
 )
 
 target_compile_features(vms_storage PUBLIC cxx_std_20)

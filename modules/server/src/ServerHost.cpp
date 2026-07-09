@@ -11,13 +11,14 @@
 #include "vms/playback/PlaybackEngine.hpp"
 #include "vms/plugin/PluginHost.hpp"
 #include "vms/recording/RecordingEngine.hpp"
-#include "vms/storage/InMemoryCameraRepository.hpp"
 #include "vms/storage/LocalStorageProvider.hpp"
+#include "vms/storage/FileCameraRepository.hpp"
 #include "vms/storage/StorageManager.hpp"
 #include "vms/streaming/StreamPipeline.hpp"
 #include "vms/server/HttpApiServer.hpp"
 
 #include <string>
+#include <filesystem>
 
 namespace vms {
 
@@ -27,12 +28,15 @@ ServerHost::ServerHost() {
         logger().log(LogLevel::Info, "ServerHost", "Loaded server configuration");
     }
 
-    auto repository = std::make_shared<InMemoryCameraRepository>();
+    const auto storageRoot = config.get("storage.root", "./vms-data");
+    std::filesystem::create_directories(storageRoot);
+    const auto dbPath = config.get("db.path", storageRoot + "/cameras.json");
+
+    auto repository = std::make_shared<FileCameraRepository>(dbPath);
     auto storageManager = std::make_shared<StorageManager>();
     auto streamPipeline = std::make_shared<StreamPipeline>();
     auto eventBus = std::make_shared<EventBus>();
 
-    const auto storageRoot = config.get("storage.root", "./vms-data");
     try {
         apiPort_ = std::stoi(config.get("api.port", "8080"));
     } catch (...) {

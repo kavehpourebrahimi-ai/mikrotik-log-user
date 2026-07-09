@@ -1,3 +1,4 @@
 storage.root=./vms-data
 log.level=info
 api.port=8080
+db.path=./data/cameras.json

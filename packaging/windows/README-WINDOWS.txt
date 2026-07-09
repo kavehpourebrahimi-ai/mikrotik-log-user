@@ -7,6 +7,8 @@ Contents:
 - config\vms-server.conf
 - scripts\start-server.cmd
 - scripts\start-client.cmd
+- scripts\install-service.cmd
+- scripts\uninstall-service.cmd
 
 Quick start:
 1) Run scripts\start-server.cmd
@@ -19,4 +21,4 @@ Industrial deployment notes:
 - Change admin password immediately.
 - Set Windows Firewall rules for API port 8080.
 - Configure your production storage path in config\vms-server.conf.
-- Run the server with a dedicated Windows service account.
+- Install service mode with scripts\install-service.cmd (Run as Administrator).
