@@ -4,6 +4,7 @@ add_executable(vms_tests
     common/test_service_registry.cpp
     storage/test_storage.cpp
     camera/test_camera_manager.cpp
+    recording/test_recording_engine.cpp
     auth/test_auth.cpp
     events/test_events.cpp
 )
@@ -14,6 +15,8 @@ target_link_libraries(vms_tests
         Vms::Common
         Vms::Storage
         Vms::Camera
+        Vms::Streaming
+        Vms::Recording
         Vms::Auth
         Vms::Events
         Catch2::Catch2WithMain

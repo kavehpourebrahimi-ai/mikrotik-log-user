@@ -1,6 +1,9 @@
 #pragma once
 
+#include <atomic>
+#include <memory>
 #include <mutex>
+#include <thread>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -23,10 +26,17 @@ public:
     [[nodiscard]] bool isRecording(const CameraId& cameraId) const override;
 
 private:
+    struct RecordingWorker {
+        std::atomic<bool> running{false};
+        std::thread thread;
+        std::string filePath;
+    };
+
     std::shared_ptr<IStorageManager> storageManager_;
     std::shared_ptr<IStreamPipeline> streamPipeline_;
     mutable std::mutex mutex_;
     std::unordered_set<std::string> activeRecordings_;
+    std::unordered_map<std::string, std::unique_ptr<RecordingWorker>> workers_;
 };
 
 }  // namespace vms
