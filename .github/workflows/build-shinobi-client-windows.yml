@@ -1,0 +1,42 @@
+name: Build Shinobi Windows Client
+
+on:
+  push:
+    branches:
+      - cursor/shinobi-windows-client-1755
+    paths:
+      - 'shinobi-windows-client/**'
+      - '.github/workflows/build-shinobi-client-windows.yml'
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: shinobi-windows-client
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build frontend
+        run: npm run build
+
+      - name: Build Tauri app
+        run: npm run tauri build
+
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: shinobi-operator-desk-windows
+          path: |
+            shinobi-windows-client/src-tauri/target/release/bundle/**/*.exe
+            shinobi-windows-client/src-tauri/target/release/bundle/**/*.msi
