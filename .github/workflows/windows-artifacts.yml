@@ -33,52 +33,13 @@ jobs:
           cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DVMS_BUILD_TESTS=OFF -DCMAKE_CXX_COMPILER=g++
           cmake --build build --parallel
 
-      - name: Collect runtime DLL dependencies
-        shell: msys2 {0}
-        run: |
-          mkdir -p runtime-dlls
-
-          collect_deps() {
-            local exe="$1"
-            local queue=()
-            local visited_file="runtime-dlls/.visited.txt"
-            touch "${visited_file}"
-
-            while IFS= read -r dep; do
-              [[ -n "${dep}" ]] && queue+=("${dep}")
-            done < <(objdump -p "${exe}" | awk '/DLL Name:/ {print $3}')
-
-            while ((${#queue[@]})); do
-              local dll="${queue[0]}"
-              queue=("${queue[@]:1}")
-
-              if grep -Fxq "${dll}" "${visited_file}"; then
-                continue
-              fi
-              echo "${dll}" >> "${visited_file}"
-
-              local source="/mingw64/bin/${dll}"
-              if [[ -f "${source}" ]]; then
-                cp -f "${source}" runtime-dlls/
-                while IFS= read -r child; do
-                  [[ -n "${child}" ]] && queue+=("${child}")
-                done < <(objdump -p "${source}" | awk '/DLL Name:/ {print $3}')
-              fi
-            done
-          }
-
-          collect_deps "build/modules/server/vms_server.exe"
-          collect_deps "build/modules/client/vms_client.exe"
-
       - name: Collect executables
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path artifacts | Out-Null
           Copy-Item "build/modules/server/vms_server.exe" "artifacts/vms_server.exe"
           Copy-Item "build/modules/client/vms_client.exe" "artifacts/vms_client.exe"
-          if (Test-Path "runtime-dlls") {
-            Copy-Item "runtime-dlls\*.dll" "artifacts\" -Force -ErrorAction SilentlyContinue
-          }
+          Copy-Item "C:\msys64\mingw64\bin\*.dll" "artifacts\" -Force -ErrorAction SilentlyContinue
           New-Item -ItemType Directory -Force -Path "windows-dist/EnterpriseVMS/bin" | Out-Null
           New-Item -ItemType Directory -Force -Path "windows-dist/EnterpriseVMS/config" | Out-Null
           New-Item -ItemType Directory -Force -Path "windows-dist/EnterpriseVMS/scripts" | Out-Null
