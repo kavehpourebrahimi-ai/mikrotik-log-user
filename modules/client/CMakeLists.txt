@@ -13,6 +13,8 @@ target_link_libraries(vms_client
         Vms::Core
         Vms::Common
         Vms::Api
+        httplib::httplib
+        nlohmann_json::nlohmann_json
 )
 
 target_compile_features(vms_client PRIVATE cxx_std_20)
