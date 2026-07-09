@@ -1,0 +1,39 @@
+name: Windows Artifacts
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - "cursor/**"
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build-windows-executables:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure (Release)
+        shell: pwsh
+        run: cmake -B build -G "Visual Studio 17 2022" -A x64 -DVMS_BUILD_TESTS=OFF
+
+      - name: Build server and client
+        shell: pwsh
+        run: cmake --build build --config Release --parallel
+
+      - name: Collect executables
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path artifacts | Out-Null
+          Copy-Item "build/modules/server/Release/vms_server.exe" "artifacts/vms_server.exe"
+          Copy-Item "build/modules/client/Release/vms_client.exe" "artifacts/vms_client.exe"
+
+      - name: Upload server/client artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: enterprise-vms-windows-executables
+          path: artifacts/

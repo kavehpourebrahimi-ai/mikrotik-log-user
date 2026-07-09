@@ -25,6 +25,7 @@ add_subdirectory(modules/onvif)
 add_subdirectory(modules/api)
 add_subdirectory(modules/plugin-sdk)
 add_subdirectory(modules/server)
+add_subdirectory(modules/client)
 
 if(VMS_BUILD_TESTS)
     enable_testing()

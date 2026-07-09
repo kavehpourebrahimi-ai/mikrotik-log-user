@@ -3,6 +3,7 @@
 /// @file WebSocketApi.hpp
 /// @brief WebSocket notification contract (Phase 2: gateway binding).
 
+#include <cstdint>
 #include <string>
 #include <vector>
 

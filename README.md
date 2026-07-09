@@ -19,6 +19,7 @@ cmake -B build -DCMAKE_BUILD_TYPE=Release -DVMS_BUILD_TESTS=ON
 cmake --build build --parallel
 ctest --test-dir build --output-on-failure
 ./build/modules/server/vms_server
+./build/modules/client/vms_client --server http://127.0.0.1:8080
 ```
 
 See [docs/BUILD.md](docs/BUILD.md) for full build instructions and [docs/architecture.md](docs/architecture.md) for system design.
@@ -40,7 +41,21 @@ modules/
   api/           REST and WebSocket API contracts
   plugin-sdk/    Plugin host
   server/        Headless server executable
+  client/        Client executable bootstrap
 ```
+
+## Download Windows .exe files
+
+The workflow `.github/workflows/windows-artifacts.yml` produces downloadable
+Windows binaries on each push/PR:
+
+- `vms_server.exe`
+- `vms_client.exe`
+
+In GitHub:
+1. Open **Actions**.
+2. Select **Windows Artifacts** run.
+3. Download artifact **enterprise-vms-windows-executables**.
 
 ## Mandatory Requirements (Roadmap)
 

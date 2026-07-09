@@ -37,6 +37,12 @@ ctest --output-on-failure
 ./build/modules/server/vms_server
 ```
 
+## Run Client (bootstrap shell)
+
+```bash
+./build/modules/client/vms_client --server http://127.0.0.1:8080
+```
+
 Optional configuration file `vms-server.conf` in the working directory:
 
 ```ini
@@ -61,6 +67,7 @@ log.level=info
 | `Vms::Api` | INTERFACE | REST/WebSocket contracts |
 | `Vms::PluginSdk` | STATIC | Plugin host |
 | `vms_server` | EXECUTABLE | Headless server bootstrap |
+| `vms_client` | EXECUTABLE | Client bootstrap shell |
 | `vms_tests` | EXECUTABLE | Catch2 unit tests |
 
 ## Build (Windows)
@@ -69,6 +76,7 @@ log.level=info
 cmake -B build -G "Visual Studio 17 2022" -A x64
 cmake --build build --config Release
 .\build\modules\server\Release\vms_server.exe
+.\build\modules\client\Release\vms_client.exe --server http://127.0.0.1:8080
 ```
 
 ## Install Layout (planned)
@@ -85,3 +93,9 @@ C:\Program Files\EnterpriseVms\
 ## CI
 
 GitHub Actions workflow `.github/workflows/ci.yml` builds and tests on Ubuntu.
+
+GitHub Actions workflow `.github/workflows/windows-artifacts.yml` builds Windows
+Release binaries and uploads downloadable artifacts:
+
+- `vms_server.exe`
+- `vms_client.exe`
