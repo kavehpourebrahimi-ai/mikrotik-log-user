@@ -1,0 +1,2 @@
+storage.root=./vms-data
+log.level=info
