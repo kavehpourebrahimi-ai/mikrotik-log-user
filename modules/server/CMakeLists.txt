@@ -24,3 +24,8 @@ target_link_libraries(vms_server
 )
 
 target_compile_features(vms_server PRIVATE cxx_std_20)
+
+if(MINGW)
+    # Produce self-contained Windows binaries without MinGW runtime DLL requirements.
+    target_link_options(vms_server PRIVATE -static -static-libgcc -static-libstdc++)
+endif()
