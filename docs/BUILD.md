@@ -48,6 +48,16 @@ Optional configuration file `vms-server.conf` in the working directory:
 ```ini
 storage.root=./vms-data
 log.level=info
+api.port=8080
+```
+
+## Server API quick test
+
+```bash
+curl http://127.0.0.1:8080/api/v1/health
+curl -X POST http://127.0.0.1:8080/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"admin"}'
 ```
 
 ## Module Targets

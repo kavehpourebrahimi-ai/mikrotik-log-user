@@ -22,6 +22,27 @@ ctest --test-dir build --output-on-failure
 ./build/modules/client/vms_client --server http://127.0.0.1:8080
 ```
 
+### Use the server API (real functionality)
+
+```bash
+# Health
+curl http://127.0.0.1:8080/api/v1/health
+
+# Login (default bootstrap account)
+TOKEN=$(curl -s -X POST http://127.0.0.1:8080/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"admin"}' | jq -r '.access_token')
+
+# Add camera
+curl -X POST http://127.0.0.1:8080/api/v1/cameras \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Lobby","host":"192.168.1.10","mainStreamUri":"rtsp://192.168.1.10/main"}'
+
+# List cameras
+curl http://127.0.0.1:8080/api/v1/cameras -H "Authorization: Bearer $TOKEN"
+```
+
 See [docs/BUILD.md](docs/BUILD.md) for full build instructions and [docs/architecture.md](docs/architecture.md) for system design.
 
 ## Module Layout

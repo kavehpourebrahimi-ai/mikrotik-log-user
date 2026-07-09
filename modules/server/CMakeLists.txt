@@ -1,6 +1,7 @@
 add_executable(vms_server
     src/main.cpp
     src/ServerHost.cpp
+    src/HttpApiServer.cpp
 )
 
 target_include_directories(vms_server
@@ -21,6 +22,8 @@ target_link_libraries(vms_server
         Vms::Playback
         Vms::Onvif
         Vms::PluginSdk
+        httplib::httplib
+        nlohmann_json::nlohmann_json
 )
 
 target_compile_features(vms_server PRIVATE cxx_std_20)

@@ -15,6 +15,9 @@
 #include "vms/storage/LocalStorageProvider.hpp"
 #include "vms/storage/StorageManager.hpp"
 #include "vms/streaming/StreamPipeline.hpp"
+#include "vms/server/HttpApiServer.hpp"
+
+#include <string>
 
 namespace vms {
 
@@ -30,6 +33,11 @@ ServerHost::ServerHost() {
     auto eventBus = std::make_shared<EventBus>();
 
     const auto storageRoot = config.get("storage.root", "./vms-data");
+    try {
+        apiPort_ = std::stoi(config.get("api.port", "8080"));
+    } catch (...) {
+        apiPort_ = 8080;
+    }
     auto localProvider = std::make_shared<LocalStorageProvider>(storageRoot);
     storageManager->registerProvider("local-primary", localProvider);
 
@@ -48,13 +56,43 @@ ServerHost::ServerHost() {
     registry_.registerService<IPluginHost>(std::make_shared<PluginHost>(*eventBus));
 }
 
+ServerHost::~ServerHost() {
+    stop();
+}
+
 void ServerHost::start() {
     if (running_) {
         return;
     }
 
+    auto cameraRepository = registry_.resolve<ICameraRepository>();
+    auto recordingEngine = registry_.resolve<IRecordingEngine>();
+    auto storageManager = registry_.resolve<IStorageManager>();
+    auto authenticationService = registry_.resolve<IAuthenticationService>();
+
+    if (!cameraRepository || !recordingEngine || !storageManager || !authenticationService) {
+        logger().log(LogLevel::Error, "ServerHost", "Failed to resolve core services");
+        return;
+    }
+
+    apiServer_ = std::make_unique<HttpApiServer>(
+        std::move(cameraRepository),
+        std::move(recordingEngine),
+        std::move(storageManager),
+        std::move(authenticationService),
+        apiPort_);
+    const auto apiStartResult = apiServer_->start();
+    if (!apiStartResult.ok()) {
+        logger().log(LogLevel::Error, "ServerHost", "Failed to start HTTP API: " + apiStartResult.error);
+        return;
+    }
+
     running_ = true;
     logger().log(LogLevel::Info, "ServerHost", "Enterprise VMS server started");
+    logger().log(
+        LogLevel::Info,
+        "ServerHost",
+        "API endpoints available at http://127.0.0.1:" + std::to_string(apiPort_) + "/api/v1");
 }
 
 void ServerHost::stop() {
@@ -63,6 +101,9 @@ void ServerHost::stop() {
     }
 
     running_ = false;
+    if (apiServer_) {
+        apiServer_->stop();
+    }
     logger().log(LogLevel::Info, "ServerHost", "Enterprise VMS server stopped");
 }
 

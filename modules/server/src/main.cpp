@@ -25,7 +25,8 @@ int main() {
     vms::logger().log(
         vms::LogLevel::Info,
         "vms_server",
-        "Press Ctrl+C to stop");
+        "REST API: GET /api/v1/health, POST /api/v1/auth/login");
+    vms::logger().log(vms::LogLevel::Info, "vms_server", "Press Ctrl+C to stop");
 
     while (g_running) {
         std::this_thread::sleep_for(std::chrono::seconds(1));
