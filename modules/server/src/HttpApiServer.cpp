@@ -87,6 +87,88 @@ Result<void> HttpApiServer::start() {
                 {"api_version", "v1"}});
     });
 
+    server_->Get("/", [](const httplib::Request&, httplib::Response& res) {
+        constexpr auto kHtml = R"HTML(
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Enterprise VMS Dashboard</title>
+  <style>
+    body{font-family:Arial,sans-serif;max-width:960px;margin:24px auto;padding:0 12px;background:#f6f8fb}
+    .card{background:#fff;border:1px solid #ddd;border-radius:8px;padding:16px;margin-bottom:12px}
+    h1{color:#0b3b82}.row{display:flex;gap:8px;flex-wrap:wrap}
+    input,button{padding:8px;border-radius:6px;border:1px solid #bbb}
+    button{background:#0b3b82;color:#fff;border:none;cursor:pointer}
+    pre{background:#111;color:#7cff7c;padding:12px;border-radius:8px;overflow:auto}
+  </style>
+</head>
+<body>
+  <h1>Enterprise VMS Web UI</h1>
+  <div class="card">
+    <h3>Login</h3>
+    <div class="row">
+      <input id="u" placeholder="username" value="admin" />
+      <input id="p" placeholder="password" value="admin" type="password" />
+      <button onclick="login()">Login</button>
+    </div>
+  </div>
+  <div class="card">
+    <h3>Health & Cameras</h3>
+    <button onclick="health()">Health</button>
+    <button onclick="listCams()">List Cameras</button>
+  </div>
+  <div class="card">
+    <h3>Add Camera</h3>
+    <div class="row">
+      <input id="name" placeholder="Camera name" value="Lobby" />
+      <input id="host" placeholder="Host/IP" value="192.168.1.10" />
+      <input id="uri" placeholder="Main RTSP URI" value="rtsp://192.168.1.10/main" style="min-width:300px" />
+      <button onclick="addCam()">Add</button>
+    </div>
+  </div>
+  <div class="card">
+    <h3>Recording Controls</h3>
+    <div class="row">
+      <input id="cid" placeholder="Camera ID" />
+      <button onclick="recStart()">Start</button>
+      <button onclick="recStop()">Stop</button>
+      <button onclick="recFiles()">Files</button>
+      <button onclick="discover()">ONVIF Discover</button>
+    </div>
+  </div>
+  <div class="card"><pre id="out">Ready.</pre></div>
+<script>
+let token = "";
+const out = document.getElementById("out");
+const j = (obj)=>JSON.stringify(obj,null,2);
+async function req(method,path,body){
+  const headers={"Content-Type":"application/json"};
+  if(token) headers["Authorization"]="Bearer "+token;
+  const r=await fetch(path,{method,headers,body:body?JSON.stringify(body):undefined});
+  const t=await r.text();
+  try{return {status:r.status,data:JSON.parse(t)}}catch{return {status:r.status,data:t}}
+}
+async function login(){
+  const r=await req("POST","/api/v1/auth/login",{username:u.value,password:p.value});
+  if(r.data.access_token) token=r.data.access_token;
+  out.textContent=j(r);
+}
+async function health(){ out.textContent=j(await req("GET","/api/v1/health")); }
+async function listCams(){ out.textContent=j(await req("GET","/api/v1/cameras")); }
+async function addCam(){ out.textContent=j(await req("POST","/api/v1/cameras",{name:name.value,host:host.value,mainStreamUri:uri.value})); }
+async function recStart(){ out.textContent=j(await req("POST","/api/v1/cameras/"+cid.value+"/record/start",{})); }
+async function recStop(){ out.textContent=j(await req("POST","/api/v1/cameras/"+cid.value+"/record/stop",{})); }
+async function recFiles(){ out.textContent=j(await req("GET","/api/v1/cameras/"+cid.value+"/record/files")); }
+async function discover(){ out.textContent=j(await req("POST","/api/v1/onvif/discover",{timeoutMs:1500})); }
+</script>
+</body>
+</html>
+)HTML";
+        res.set_content(kHtml, "text/html; charset=utf-8");
+    });
+
     server_->Post("/api/v1/auth/login", [this](const httplib::Request& req, httplib::Response& res) {
         json payload;
         try {

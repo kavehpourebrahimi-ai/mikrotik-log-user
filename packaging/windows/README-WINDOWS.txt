@@ -7,12 +7,14 @@ Contents:
 - config\vms-server.conf
 - scripts\start-server.cmd
 - scripts\start-client.cmd
+- scripts\start-web-ui.cmd
 - scripts\install-service.cmd
 - scripts\uninstall-service.cmd
 
 Quick start:
 1) Run scripts\start-server.cmd
 2) Run scripts\start-client.cmd
+   or run scripts\start-web-ui.cmd for browser UI
 3) Login with default credentials:
    username: admin
    password: admin

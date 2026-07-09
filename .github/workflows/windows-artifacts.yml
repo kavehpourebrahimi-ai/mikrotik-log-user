@@ -33,34 +33,62 @@ jobs:
           cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DVMS_BUILD_TESTS=OFF -DCMAKE_CXX_COMPILER=g++
           cmake --build build --parallel
 
+      - name: Collect runtime DLL dependencies
+        shell: msys2 {0}
+        run: |
+          mkdir -p runtime-dlls
+
+          collect_deps() {
+            local exe="$1"
+            local queue=()
+            local visited_file="runtime-dlls/.visited.txt"
+            touch "${visited_file}"
+
+            while IFS= read -r dep; do
+              [[ -n "${dep}" ]] && queue+=("${dep}")
+            done < <(objdump -p "${exe}" | awk '/DLL Name:/ {print $3}')
+
+            while ((${#queue[@]})); do
+              local dll="${queue[0]}"
+              queue=("${queue[@]:1}")
+
+              if grep -Fxq "${dll}" "${visited_file}"; then
+                continue
+              fi
+              echo "${dll}" >> "${visited_file}"
+
+              local source="/mingw64/bin/${dll}"
+              if [[ -f "${source}" ]]; then
+                cp -f "${source}" runtime-dlls/
+                while IFS= read -r child; do
+                  [[ -n "${child}" ]] && queue+=("${child}")
+                done < <(objdump -p "${source}" | awk '/DLL Name:/ {print $3}')
+              fi
+            done
+          }
+
+          collect_deps "build/modules/server/vms_server.exe"
+          collect_deps "build/modules/client/vms_client.exe"
+
       - name: Collect executables
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path artifacts | Out-Null
           Copy-Item "build/modules/server/vms_server.exe" "artifacts/vms_server.exe"
           Copy-Item "build/modules/client/vms_client.exe" "artifacts/vms_client.exe"
-          $dllSource = "C:\msys64\mingw64\bin"
-          $dlls = @("libgcc_s_seh-1.dll", "libwinpthread-1.dll", "libstdc++-6.dll", "libsqlite3-0.dll")
-          foreach ($dll in $dlls) {
-            $sourcePath = Join-Path $dllSource $dll
-            if (Test-Path $sourcePath) {
-              Copy-Item $sourcePath (Join-Path "artifacts" $dll) -Force
-            }
+          if (Test-Path "runtime-dlls") {
+            Copy-Item "runtime-dlls\*.dll" "artifacts\" -Force -ErrorAction SilentlyContinue
           }
           New-Item -ItemType Directory -Force -Path "windows-dist/EnterpriseVMS/bin" | Out-Null
           New-Item -ItemType Directory -Force -Path "windows-dist/EnterpriseVMS/config" | Out-Null
           New-Item -ItemType Directory -Force -Path "windows-dist/EnterpriseVMS/scripts" | Out-Null
           Copy-Item "artifacts/vms_server.exe" "windows-dist/EnterpriseVMS/bin/vms_server.exe" -Force
           Copy-Item "artifacts/vms_client.exe" "windows-dist/EnterpriseVMS/bin/vms_client.exe" -Force
-          foreach ($dll in $dlls) {
-            $artifactDll = Join-Path "artifacts" $dll
-            if (Test-Path $artifactDll) {
-              Copy-Item $artifactDll (Join-Path "windows-dist/EnterpriseVMS/bin" $dll) -Force
-            }
-          }
+          Copy-Item "artifacts\*.dll" "windows-dist/EnterpriseVMS/bin\" -Force -ErrorAction SilentlyContinue
           Copy-Item "packaging/windows/config/vms-server.conf" "windows-dist/EnterpriseVMS/config/vms-server.conf" -Force
           Copy-Item "packaging/windows/scripts/start-server.cmd" "windows-dist/EnterpriseVMS/scripts/start-server.cmd" -Force
           Copy-Item "packaging/windows/scripts/start-client.cmd" "windows-dist/EnterpriseVMS/scripts/start-client.cmd" -Force
+          Copy-Item "packaging/windows/scripts/start-web-ui.cmd" "windows-dist/EnterpriseVMS/scripts/start-web-ui.cmd" -Force
           Copy-Item "packaging/windows/scripts/install-service.cmd" "windows-dist/EnterpriseVMS/scripts/install-service.cmd" -Force
           Copy-Item "packaging/windows/scripts/uninstall-service.cmd" "windows-dist/EnterpriseVMS/scripts/uninstall-service.cmd" -Force
           Copy-Item "packaging/windows/README-WINDOWS.txt" "windows-dist/EnterpriseVMS/README-WINDOWS.txt" -Force

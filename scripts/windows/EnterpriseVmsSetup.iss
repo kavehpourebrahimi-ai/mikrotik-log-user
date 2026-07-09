@@ -46,6 +46,7 @@ Name: "{app}\logs"
 [Icons]
 Name: "{group}\Enterprise VMS Client"; Filename: "{app}\scripts\start-client.cmd"; WorkingDir: "{app}"
 Name: "{group}\Enterprise VMS Server"; Filename: "{app}\scripts\start-server.cmd"; WorkingDir: "{app}"
+Name: "{group}\Enterprise VMS Web UI"; Filename: "{app}\scripts\start-web-ui.cmd"; WorkingDir: "{app}"
 Name: "{group}\Install Server Service"; Filename: "{app}\scripts\install-service.cmd"; WorkingDir: "{app}"
 Name: "{group}\Uninstall Server Service"; Filename: "{app}\scripts\uninstall-service.cmd"; WorkingDir: "{app}"
 Name: "{group}\Uninstall Enterprise VMS"; Filename: "{uninstallexe}"
