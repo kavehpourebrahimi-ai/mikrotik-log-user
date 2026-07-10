@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MikroTik 4D Syslog Analyzer</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/plotly.js-dist-min@2.27.0/plotly.min.js"></script>
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+  <link rel="stylesheet" href="/static/css/dashboard.css" />
+</head>
+<body>
+  <header class="header">
+    <div class="brand">
+      <span class="logo">◈</span>
+      <div>
+        <h1>MikroTik 4D Syslog Analyzer</h1>
+        <p class="subtitle">Full-size logs · DHCP flow · DNS resolution paths</p>
+      </div>
+    </div>
+    <div class="connect-bar">
+      <input id="routerIp" type="text" placeholder="MikroTik IP (e.g. 192.168.88.1)" value="{{ default_host }}" />
+      <input id="routerUser" type="text" placeholder="User" value="admin" />
+      <input id="routerPass" type="password" placeholder="Password" />
+      <label class="checkbox"><input id="setupSyslog" type="checkbox" /> Auto-configure remote syslog</label>
+      <button id="connectBtn" class="btn primary">Connect</button>
+      <span id="statusBadge" class="badge offline">Offline</span>
+    </div>
+  </header>
+
+  <main class="grid">
+    <section class="panel kpi-row">
+      <div class="kpi"><span id="kpiTotal">0</span><label>Total Logs</label></div>
+      <div class="kpi"><span id="kpiDhcp">0</span><label>DHCP Events</label></div>
+      <div class="kpi"><span id="kpiDns">0</span><label>DNS Queries</label></div>
+      <div class="kpi"><span id="kpiFirewall">0</span><label>Firewall</label></div>
+      <div class="kpi"><span id="kpiRouter">—</span><label>Router</label></div>
+    </section>
+
+    <section class="panel wide">
+      <h2>4D Flow Analyzer <small>Time × Source × Destination × Service</small></h2>
+      <div id="flow3d" class="chart-box tall"></div>
+    </section>
+
+    <section class="panel">
+      <h2>Log Timeline</h2>
+      <canvas id="timelineChart"></canvas>
+    </section>
+
+    <section class="panel">
+      <h2>Service Distribution</h2>
+      <canvas id="serviceChart"></canvas>
+    </section>
+
+    <section class="panel wide">
+      <h2>DHCP Lifecycle Flow</h2>
+      <div id="dhcpFlow" class="flow-list"></div>
+    </section>
+
+    <section class="panel">
+      <h2>Top DNS Queries</h2>
+      <canvas id="dnsChart"></canvas>
+    </section>
+
+    <section class="panel">
+      <h2>IP Traffic Pairs</h2>
+      <canvas id="pairsChart"></canvas>
+    </section>
+
+    <section class="panel wide">
+      <h2>Live Syslog Stream</h2>
+      <div class="log-toolbar">
+        <input id="logSearch" type="search" placeholder="Filter logs…" />
+        <select id="logService">
+          <option value="">All services</option>
+          <option value="dhcp">DHCP</option>
+          <option value="dns">DNS</option>
+          <option value="firewall">Firewall</option>
+          <option value="hotspot">Hotspot</option>
+          <option value="system">System</option>
+        </select>
+      </div>
+      <div id="logStream" class="log-stream"></div>
+    </section>
+  </main>
+
+  <script src="/static/js/dashboard.js"></script>
+</body>
+</html>

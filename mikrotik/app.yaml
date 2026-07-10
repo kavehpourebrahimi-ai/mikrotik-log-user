@@ -1,0 +1,24 @@
+# MikroTik 4D Syslog Analyzer — Container deployment for RouterOS 7.13+
+#
+# Deploy this app ON the MikroTik router so you can open:
+#   http://<MIKROTIK_IP>:8080
+# and see full syslog graphics, DHCP flow, and DNS resolution paths.
+
+name: mikrotik-4d-analyzer
+description: Full-size MikroTik syslog with 4D flow analyzer (DHCP, DNS, firewall)
+version: 1.0.0
+author: mikrotik-log-user
+category: monitoring
+
+ports:
+  - 8080:8080/tcp:web
+  - 514:514/udp:syslog
+
+env:
+  WEB_HOST: "0.0.0.0"
+  WEB_PORT: "8080"
+  SYSLOG_HOST: "0.0.0.0"
+  SYSLOG_PORT: "514"
+  SYSLOG_MAX_LOGS: "50000"
+
+image: mikrotik-4d-analyzer:latest
