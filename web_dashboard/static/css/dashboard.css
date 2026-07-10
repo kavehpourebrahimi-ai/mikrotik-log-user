@@ -161,6 +161,17 @@ body {
 .hint { font-size: 0.8rem; color: var(--muted); margin-bottom: 0.75rem; }
 .muted { color: var(--muted); font-size: 0.8rem; }
 
+.peer-diagram { display: flex; flex-direction: column; gap: 0.75rem; margin-bottom: 1rem; }
+.peer-link-card {
+  display: flex; align-items: center; justify-content: center; gap: 1rem;
+  background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 1rem; flex-wrap: wrap;
+}
+.peer-link-card.active { border-color: var(--green); }
+.peer-node { background: var(--panel); padding: 0.5rem 1rem; border-radius: 6px; font-family: monospace; font-size: 0.85rem; border: 1px solid var(--border); }
+.peer-arrow { display: flex; flex-direction: column; align-items: center; gap: 0.25rem; color: var(--accent); font-size: 0.8rem; }
+.peer-type { font-weight: 700; }
+.peer-traffic { color: var(--muted); font-size: 0.75rem; }
+
 .chart-lg { min-height: 420px; }
 
 /* VPN service cards */

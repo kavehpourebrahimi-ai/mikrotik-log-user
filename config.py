@@ -15,6 +15,7 @@ MIKROTIK_HOST = os.getenv("MIKROTIK_HOST", "192.168.88.1")
 MIKROTIK_USER = os.getenv("MIKROTIK_USER", "admin")
 MIKROTIK_PASSWORD = os.getenv("MIKROTIK_PASSWORD", "")
 MIKROTIK_PORT = int(os.getenv("MIKROTIK_PORT", "22"))
+MIKROTIK_PEER_HOST = os.getenv("MIKROTIK_PEER_HOST", "")
 
 SYSLOG_HOST = os.getenv("SYSLOG_HOST", "0.0.0.0")
 SYSLOG_PORT = int(os.getenv("SYSLOG_PORT", "514"))

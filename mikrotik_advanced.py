@@ -100,11 +100,36 @@ class MikroTikConnection:
         return _parse_ros_detail(output)
 
     def fetch_ipip_peers(self) -> list[dict[str, str]]:
+        return self.fetch_ipip_tunnels()
+
+    def fetch_ipip_tunnels(self) -> list[dict[str, str]]:
         try:
             output = self.run("/interface/ipip/print detail")
             return _parse_ros_detail(output)
         except Exception:
             return []
+
+    def fetch_gre_tunnels(self) -> list[dict[str, str]]:
+        try:
+            output = self.run("/interface/gre/print detail")
+            return _parse_ros_detail(output)
+        except Exception:
+            return []
+
+    def fetch_eoip_tunnels(self) -> list[dict[str, str]]:
+        try:
+            output = self.run("/interface/eoip/print detail")
+            return _parse_ros_detail(output)
+        except Exception:
+            return []
+
+    def fetch_interface_stats(self) -> dict[str, dict[str, str]]:
+        """RX/TX bytes per interface — for IPIP tunnel traffic measurement."""
+        try:
+            output = self.run("/interface print stats")
+            return _parse_interface_stats(output)
+        except Exception:
+            return {}
 
     def configure_remote_syslog(self, remote_ip: str, port: int = 514) -> str:
         """Configure MikroTik to forward ALL logs needed for FortiAnalyzer-style analysis."""
@@ -201,3 +226,30 @@ def _parse_ros_table_as_dicts(output: str) -> list[dict[str, str]]:
         if len(vals) >= len(headers):
             rows.append(dict(zip(headers, vals)))
     return rows
+
+
+def _parse_interface_stats(output: str) -> dict[str, dict[str, str]]:
+    """Parse /interface print stats into {name: {rx-byte, tx-byte, ...}}."""
+    result: dict[str, dict[str, str]] = {}
+    current_name = ""
+    current: dict[str, str] = {}
+    for line in output.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if re.match(r"^\d+$", line):
+            if current_name and current:
+                result[current_name] = current
+            current = {}
+            continue
+        if line.startswith("name="):
+            if current_name and current:
+                result[current_name] = current
+            current_name = line.split("=", 1)[1].strip()
+            current = {"name": current_name}
+        elif "=" in line:
+            key, _, val = line.partition("=")
+            current[key.strip()] = val.strip()
+    if current_name and current:
+        result[current_name] = current
+    return result

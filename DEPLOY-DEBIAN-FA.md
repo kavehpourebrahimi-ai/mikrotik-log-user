@@ -69,7 +69,20 @@ sudo bash install-debian.sh
 
 ---
 
-## تب‌های داشبورد (مثل FortiAnalyzer)
+## تب IPIP — ترافیک بین دو MikroTik
+
+1. **هر دو روتر** syslog را به سرور Debian بفرستند
+2. در داشبورد: IP میکروتik ۱ + **IP میکروتik ۲ (peer)** → اتصال
+3. روی **هر دو روتر** firewall log برای interface تونل:
+
+```
+/ip firewall filter add chain=forward action=log log-prefix=IPIP in-interface=ipip-tunnel1
+/ip firewall filter add chain=forward action=log log-prefix=IPIP out-interface=ipip-tunnel1
+```
+
+4. تب **IPIP / تونل** → ترافیک بین روترها، RX/TX، IP مبدأ → مقصد
+
+---
 
 | تب | محتوا |
 |----|--------|

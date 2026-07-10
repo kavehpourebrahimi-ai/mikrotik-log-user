@@ -64,7 +64,15 @@
 # /ip firewall filter add chain=forward action=log log-prefix=FWD place-before=0
 # /ip firewall filter add chain=input action=log log-prefix=IN
 
-# --- 7. بررسی ---
+# --- 8. لاگ Firewall برای ترافیک IPIP/GRE (ترافیک بین دو MikroTik) ---
+# این rule ترافیک عبوری از تونل IPIP را log می‌کند:
+# /ip firewall filter add chain=forward action=log log-prefix=IPIP-TUNNEL in-interface=ipip-tunnel1
+# /ip firewall filter add chain=forward action=log log-prefix=IPIP-TUNNEL out-interface=ipip-tunnel1
+#
+# نام interface را با نام تونل خودتان عوض کنید (/interface ipip print)
+# بعد از این rule، ترافیک 10.x ↔ 10.y بین دو روتر در داشبورد تب IPIP دیده می‌شود
+
+# --- 9. بررسی ---
 # /system logging print
 # /log print where topics~"ppp"
 # /log print where topics~"hotspot"

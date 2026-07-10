@@ -58,6 +58,14 @@ CREATE TABLE IF NOT EXISTS hotspot_snapshots (
     router_ip TEXT,
     data_json TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS tunnel_snapshots (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    captured_at TEXT NOT NULL,
+    router_ip TEXT,
+    data_json TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_tunnel_router ON tunnel_snapshots(router_ip);
 """
 
 
@@ -228,6 +236,42 @@ class LogDatabase:
                     "SELECT data_json FROM hotspot_snapshots ORDER BY id DESC LIMIT 1"
                 ).fetchone()
         return json.loads(row["data_json"]) if row else []
+
+    def save_tunnel_snapshot(self, router_ip: str, tunnels: list[dict]) -> None:
+        with self._lock, self._connect() as conn:
+            conn.execute(
+                "INSERT INTO tunnel_snapshots (captured_at, router_ip, data_json) VALUES (?,?,?)",
+                (datetime.now().isoformat(), router_ip, json.dumps(tunnels, ensure_ascii=False)),
+            )
+
+    def latest_tunnel_snapshot(self, router_ip: str = "") -> list[dict]:
+        with self._lock, self._connect() as conn:
+            if router_ip:
+                row = conn.execute(
+                    "SELECT data_json FROM tunnel_snapshots WHERE router_ip=? ORDER BY id DESC LIMIT 1",
+                    (router_ip,),
+                ).fetchone()
+            else:
+                row = conn.execute(
+                    "SELECT data_json FROM tunnel_snapshots ORDER BY id DESC LIMIT 1"
+                ).fetchone()
+        return json.loads(row["data_json"]) if row else []
+
+    def all_tunnel_snapshots(self) -> list[dict[str, Any]]:
+        """Latest tunnel snapshot per router (for peer mesh view)."""
+        with self._lock, self._connect() as conn:
+            rows = conn.execute(
+                """SELECT router_ip, data_json, captured_at FROM tunnel_snapshots
+                   WHERE id IN (SELECT MAX(id) FROM tunnel_snapshots GROUP BY router_ip)"""
+            ).fetchall()
+        result = []
+        for r in rows:
+            result.append({
+                "router_ip": r["router_ip"],
+                "captured_at": r["captured_at"],
+                "tunnels": json.loads(r["data_json"]),
+            })
+        return result
 
 
 log_db = LogDatabase()

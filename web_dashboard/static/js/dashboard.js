@@ -3,7 +3,7 @@
 const socket = io();
 let timelineChart, serviceChart, dnsChart;
 const PAGE_TITLES = {
-  dashboard: "داشبورد", users: "کاربران", ppp: "PPP / VPN",
+  dashboard: "داشبورد", users: "کاربران", tunnels: "IPIP / تونل", ppp: "PPP / VPN",
   hotspot: "Hotspot", dns: "DNS", dhcp: "DHCP", login: "ورود به روتر", logs: "پشته لاگ",
 };
 
@@ -61,6 +61,7 @@ document.querySelectorAll(".nav-item").forEach(btn => {
 async function loadPage(page) {
   if (page === "dashboard") await refreshDashboard();
   else if (page === "users") await refreshUsers();
+  else if (page === "tunnels") await refreshTunnels();
   else if (page === "ppp") await refreshPpp();
   else if (page === "hotspot") await refreshHotspot();
   else if (page === "dns") await refreshDns();
@@ -111,6 +112,43 @@ async function showUserDetail(username) {
   document.getElementById("detailUsername").textContent = username;
   fillTable("#userLogsTable tbody", data.logs || [],
     ["timestamp", "service", "source_ip", "dest_ip", "action", "message"]);
+}
+
+async function refreshTunnels() {
+  const data = await api("/api/tunnels?" + filterParams());
+
+  // Peer diagram
+  const links = data.peer_links || [];
+  const diagram = document.getElementById("tunnelPeerDiagram");
+  if (links.length) {
+    diagram.innerHTML = links.map(l => `
+      <div class="peer-link-card ${l.running ? 'active' : ''}">
+        <div class="peer-node">${l.router}</div>
+        <div class="peer-arrow">
+          <span class="peer-type">${l.tunnel_type}</span>
+          <span>${l.tunnel_name}</span>
+          <span class="peer-traffic">${l.rx_formatted || l.rx_bytes || "0"} ↓ · ${l.tx_formatted || l.tx_bytes || "0"} ↑</span>
+        </div>
+        <div class="peer-node">${l.peer_router || l.peer_address}</div>
+      </div>`).join("");
+  } else {
+    diagram.innerHTML = "<p class='muted'>تونل IPIP یافت نشد — هر دو MikroTik را وصل کنید و syslog را فعال کنید</p>";
+  }
+
+  const summary = data.traffic_summary || [];
+  const linkRows = summary.length ? summary : links;
+  fillTable("#tunnelLinksTable tbody", linkRows.map(l => ({
+    router: l.router, tunnel_name: l.tunnel_name, tunnel_type: l.tunnel_type || l.type_label,
+    local_address: l.local_address, peer_address: l.peer_address || l.remote_address,
+    peer_router: l.peer_router || "—", running: l.running ? "✅ فعال" : "❌",
+    rx: l.rx_formatted || l.rx_bytes || "0", tx: l.tx_formatted || l.tx_bytes || "0",
+  })), ["router", "tunnel_name", "tunnel_type", "local_address", "peer_address", "peer_router", "running", "rx", "tx"]);
+
+  fillTable("#tunnelFlowsTable tbody", data.traffic_flows || [],
+    ["router", "interface", "source_ip", "dest_ip", "protocol", "count", "last_time"]);
+
+  fillTable("#tunnelLogsTable tbody", data.recent_tunnel_logs || [],
+    ["timestamp", "router_ip", "vpn_type", "interface", "source_ip", "dest_ip", "message"]);
 }
 
 async function refreshPpp() {
@@ -214,6 +252,7 @@ document.getElementById("connectBtn").addEventListener("click", async () => {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       host: document.getElementById("routerIp").value.trim(),
+      peer_host: document.getElementById("peerIp")?.value.trim() || "",
       user: document.getElementById("routerUser").value.trim(),
       password: document.getElementById("routerPass").value,
       setup_syslog: document.getElementById("setupSyslog").checked,

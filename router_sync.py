@@ -8,6 +8,7 @@ import time
 import config
 from mikrotik_advanced import MikroTikConnection
 from ppp_analytics import fetch_and_store_hotspot_sessions, fetch_and_store_ppp_sessions
+from tunnel_analytics import fetch_and_store_tunnels
 
 
 class RouterSyncWorker:
@@ -20,11 +21,16 @@ class RouterSyncWorker:
         self._host = config.MIKROTIK_HOST
         self._user = config.MIKROTIK_USER
         self._password = config.MIKROTIK_PASSWORD
+        self._peer_host = getattr(config, "MIKROTIK_PEER_HOST", "") or ""
+        self._peer_user = config.MIKROTIK_USER
+        self._peer_password = config.MIKROTIK_PASSWORD
 
-    def configure(self, host: str, user: str, password: str) -> None:
+    def configure(self, host: str, user: str, password: str, peer_host: str = "") -> None:
         self._host = host
         self._user = user
         self._password = password
+        if peer_host:
+            self._peer_host = peer_host
 
     def start(self) -> None:
         if self._thread and self._thread.is_alive():
@@ -37,15 +43,28 @@ class RouterSyncWorker:
         self._stop.set()
 
     def sync_now(self) -> dict:
-        conn = MikroTikConnection(host=self._host, user=self._user, password=self._password)
-        try:
-            conn.connect()
-            ppp = fetch_and_store_ppp_sessions(conn)
-            hs = fetch_and_store_hotspot_sessions(conn)
-            conn.disconnect()
-            return {"ppp": len(ppp), "hotspot": len(hs), "ok": True}
-        except Exception as exc:
-            return {"ok": False, "error": str(exc)}
+        result = {"ok": True, "routers": []}
+        for label, host, user, pwd in (
+            ("primary", self._host, self._user, self._password),
+            ("peer", self._peer_host, self._peer_user, self._peer_password),
+        ):
+            if not host:
+                continue
+            conn = MikroTikConnection(host=host, user=user, password=pwd)
+            try:
+                conn.connect()
+                ppp = fetch_and_store_ppp_sessions(conn)
+                hs = fetch_and_store_hotspot_sessions(conn)
+                tunnels = fetch_and_store_tunnels(conn)
+                conn.disconnect()
+                result["routers"].append({
+                    "label": label, "host": host,
+                    "ppp": len(ppp), "hotspot": len(hs), "tunnels": len(tunnels),
+                })
+            except Exception as exc:
+                result["routers"].append({"label": label, "host": host, "error": str(exc)})
+                result["ok"] = False
+        return result
 
     def _loop(self) -> None:
         while not self._stop.is_set():

@@ -51,6 +51,11 @@ DHCP_RE = re.compile(
 )
 PROTOCOL_RE = re.compile(r"\b(TCP|UDP|ICMP|IGMP|GRE|ESP|AH)\b", re.I)
 INTERFACE_RE = re.compile(r"(?:in|out|on|via|interface)[:\s]+([\w<>\-/]+)", re.I)
+FIREWALL_IFACE_RE = re.compile(r"(?:in|out):([\w\-<>]+)", re.I)
+FIREWALL_ARROW_RE = re.compile(
+    r"(\d+\.\d+\.\d+\.\d+)(?::\d+)?[-]+>(\d+\.\d+\.\d+\.\d+)",
+    re.I,
+)
 FIREWALL_PAIR_RE = re.compile(
     r"(?:src|source)[-:]?\s*address[=:]?\s*(\d+\.\d+\.\d+\.\d+).*?(?:dst|dest)[-:]?\s*address[=:]?\s*(\d+\.\d+\.\d+\.\d+)",
     re.I,
@@ -73,6 +78,8 @@ PPP_CONN_RE = re.compile(
 
 def _detect_service(topic: str, message: str) -> str:
     combined = f"{topic} {message}".lower()
+    if any(k in combined for k in ("ipip", "gre-tunnel", "<gre-", "eoip", "eoip-tunnel")):
+        return "tunnel"
     if "account" in combined or "login" in combined or "system,info,account" in combined:
         return "login"
     if "dhcp" in combined:
@@ -80,6 +87,9 @@ def _detect_service(topic: str, message: str) -> str:
     if any(k in combined for k in ("dns", "resolve", "cache")):
         return "dns"
     if "firewall" in combined or "drop" in combined or "accept" in combined:
+        # firewall log through IPIP/GRE interface → tunnel traffic
+        if any(k in combined for k in ("in:ipip", "out:ipip", "in:gre", "out:gre", "in:eoip", "out:eoip", "<ipip", "<gre", "<eoip")):
+            return "tunnel"
         return "firewall"
     if "hotspot" in combined:
         return "hotspot"
@@ -92,7 +102,28 @@ def _detect_service(topic: str, message: str) -> str:
     return "system"
 
 
+def _extract_tunnel_interface(message: str) -> str:
+    for m in FIREWALL_IFACE_RE.finditer(message):
+        iface = m.group(1).lower()
+        if any(t in iface for t in ("ipip", "gre", "eoip")):
+            return m.group(1)
+    im = INTERFACE_RE.search(message)
+    return im.group(1) if im else ""
+
+
+def _detect_tunnel_type(message: str, interface: str) -> str:
+    combined = f"{message} {interface}".lower()
+    for t in ("ipip", "eoip", "gre"):
+        if t in combined:
+            return t
+    return "ipip"
+
+
 def _extract_ips(message: str, service: str) -> tuple[str, str]:
+    arrow = FIREWALL_ARROW_RE.search(message)
+    if arrow:
+        return arrow.group(1), arrow.group(2)
+
     fw = FIREWALL_PAIR_RE.search(message)
     if fw:
         return fw.group(1), fw.group(2)
@@ -211,6 +242,12 @@ def parse_log_line(line: str, default_ts: str | None = None) -> LogEvent:
         host_match = re.search(r"host\s+([^\s,]+)", message, re.I)
         if host_match:
             hostname = host_match.group(1)
+
+    if service == "tunnel":
+        tunnel_iface = _extract_tunnel_interface(message)
+        if tunnel_iface:
+            interface = tunnel_iface
+        vpn_type = _detect_tunnel_type(message, interface) or vpn_type or "ipip"
 
     return LogEvent(
         timestamp=ts,

@@ -21,6 +21,7 @@ from traffic_analyzer import (
     hotspot_activity,
     login_audit,
 )
+from tunnel_analytics import build_tunnel_report, fetch_and_store_tunnels
 from user_analytics import build_users_report, user_detail
 
 app = Flask(__name__, template_folder="templates", static_folder="static")
@@ -93,13 +94,15 @@ def api_connect():
     user = data.get("user", config.MIKROTIK_USER)
     password = data.get("password", config.MIKROTIK_PASSWORD)
 
+    peer_host = data.get("peer_host", config.MIKROTIK_PEER_HOST)
+
     conn = MikroTikConnection(host=host, user=user, password=password)
     try:
         conn.connect()
         identity = conn.get_identity()
         _connected_router = host
         log_store.set_router_ip(host)
-        router_sync.configure(host, user, password)
+        router_sync.configure(host, user, password, peer_host=peer_host)
 
         raw_logs = conn.fetch_logs(count=3000)
         for line in raw_logs:
@@ -107,6 +110,22 @@ def api_connect():
 
         fetch_and_store_ppp_sessions(conn)
         fetch_and_store_hotspot_sessions(conn)
+        tunnels = fetch_and_store_tunnels(conn)
+
+        # MikroTik peer (second router in IPIP link)
+        if peer_host:
+            peer = MikroTikConnection(host=peer_host, user=user, password=password)
+            try:
+                peer.connect()
+                for line in peer.fetch_logs(count=2000):
+                    log_store.add_raw(line, source=peer_host)
+                fetch_and_store_tunnels(peer)
+                if data.get("setup_syslog", False):
+                    collector_ip = data.get("collector_ip", request.host.split(":")[0])
+                    peer.configure_remote_syslog(collector_ip, config.SYSLOG_PORT)
+                peer.disconnect()
+            except Exception:
+                pass
 
         collector_ip = data.get("collector_ip", request.host.split(":")[0])
         if data.get("setup_syslog", False):
@@ -117,8 +136,8 @@ def api_connect():
 
         script = MikroTikConnection.syslog_setup_script(collector_ip, config.SYSLOG_PORT)
         return jsonify({
-            "ok": True, "host": host, "identity": identity,
-            "imported_logs": len(raw_logs), "syslog_script": script,
+            "ok": True, "host": host, "peer_host": peer_host, "identity": identity,
+            "imported_logs": len(raw_logs), "tunnels": len(tunnels), "syslog_script": script,
         })
     except Exception as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
@@ -153,9 +172,14 @@ def api_user_detail(username):
 def api_ppp():
     params = _query_params()
     report = build_ppp_report(date_from=params["date_from"], date_to=params["date_to"])
-    sync = router_sync.sync_now()
-    report["sync"] = sync
+    report["sync"] = router_sync.sync_now()
     return jsonify(report)
+
+
+@app.route("/api/tunnels")
+def api_tunnels():
+    params = _query_params()
+    return jsonify(build_tunnel_report(date_from=params["date_from"], date_to=params["date_to"]))
 
 
 @app.route("/api/analyzer/4d")
