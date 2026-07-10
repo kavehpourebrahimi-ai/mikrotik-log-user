@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import socket
+from pathlib import Path
 from typing import Any
 
 import paramiko
@@ -90,40 +91,25 @@ class MikroTikConnection:
         output = self.run("/ip/hotspot/active/print detail")
         return _parse_ros_detail(output)
 
-    def configure_remote_syslog(self, remote_ip: str, port: int = 514) -> str:
-        """Configure MikroTik to forward ALL relevant logs to collector server."""
-        topics = [
-            "info,warning,error,critical",
-            "account",
-            "dhcp",
-            "dns",
-            "firewall",
-            "hotspot",
-            "ppp",
-            "wireless",
-            "system",
-            "route",
-            "debug",
-        ]
-        commands = [
-            f'/system logging action set [find name=remote] remote={remote_ip} remote-port={port} target=remote bsd-syslog=yes syslog-facility=daemon',
-        ]
-        for topic in topics:
-            commands.append(f'/system logging add action=remote topics={topic}')
-        results = []
-        for cmd in commands:
-            try:
-                results.append(self.run(cmd))
-            except Exception as exc:
-                results.append(str(exc))
-        return "\n".join(results)
+    def fetch_hotspot_users(self) -> list[dict[str, str]]:
+        output = self.run("/ip/hotspot/user/print detail")
+        return _parse_ros_detail(output)
 
-    @staticmethod
-    def syslog_setup_script(remote_ip: str, port: int = 514) -> str:
-        """Generate RouterOS script to forward logs to external server."""
-        lines = [
-            f"# Forward all MikroTik logs to collector: {remote_ip}:{port}",
-            f'/system logging action set [find name=remote] remote={remote_ip} remote-port={port} target=remote bsd-syslog=yes',
+    def fetch_ppp_secrets(self) -> list[dict[str, str]]:
+        output = self.run("/ppp/secret/print detail")
+        return _parse_ros_detail(output)
+
+    def fetch_ipip_peers(self) -> list[dict[str, str]]:
+        try:
+            output = self.run("/interface/ipip/print detail")
+            return _parse_ros_detail(output)
+        except Exception:
+            return []
+
+    def configure_remote_syslog(self, remote_ip: str, port: int = 514) -> str:
+        """Configure MikroTik to forward ALL logs needed for FortiAnalyzer-style analysis."""
+        commands = [
+            f'/system logging action set [find name=remote] remote={remote_ip} remote-port={port} target=remote bsd-syslog=yes syslog-facility=daemon syslog-time-format=iso8601',
             '/system logging add action=remote topics=info,warning,error,critical',
             '/system logging add action=remote topics=account',
             '/system logging add action=remote topics=dhcp',
@@ -134,8 +120,25 @@ class MikroTikConnection:
             '/system logging add action=remote topics=wireless',
             '/system logging add action=remote topics=system',
             '/system logging add action=remote topics=route',
+            '/system logging add action=remote topics=debug',
+            '/system logging add action=remote topics=event',
+            '/system logging add action=remote topics=script',
+            '/system logging add action=remote topics=ups',
         ]
-        return "\n".join(lines)
+        results = []
+        for cmd in commands:
+            try:
+                results.append(self.run(cmd))
+            except Exception as exc:
+                results.append(str(exc))
+        return "\n".join(results)
+
+    @staticmethod
+    def syslog_setup_script(remote_ip: str, port: int = 514) -> str:
+        rsc = Path(__file__).parent / "mikrotik" / "full-logging-setup.rsc"
+        if rsc.exists():
+            return rsc.read_text(encoding="utf-8").replace("SERVER_IP", remote_ip).replace("SERVER_PORT", str(port))
+        return f'/system logging action set [find name=remote] remote={remote_ip} remote-port={port} target=remote'
 
     def get_identity(self) -> dict[str, str]:
         output = self.run("/system/identity/print")

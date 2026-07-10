@@ -60,7 +60,7 @@ LOGIN_RE = re.compile(
     r"(logged in|login|logged out|logout|authentication failed|connected|disconnected)\s*(?:from|via|by)?\s*(\d+\.\d+\.\d+\.\d+)?",
     re.I,
 )
-VPN_TYPE_RE = re.compile(r"\b(pptp|l2tp|pppoe|sstp|ovpn|openvpn|ipsec|ike)\b", re.I)
+VPN_TYPE_RE = re.compile(r"\b(pptp|l2tp|sstp|pppoe|ovpn|openvpn|ipip|gre|eoip|ipsec|ike)\b", re.I)
 HOTSPOT_RE = re.compile(
     r"(logged in|logged out|login|logout|trial|mac).*?(?:user[=:\s]+([^\s,]+))?",
     re.I,
