@@ -75,9 +75,60 @@ http://<MIKROTIK_IP>:8080
 
 IP روتر MikroTik را وارد کنید تا:
 - **لاگ‌های کامل** (Full-size syslog) دریافت شوند
-- **مسیر DHCP** (Offer → Ack → Bound) به صورت گرافیکی نمایش داده شود
-- **DNS resolution paths** — چه کلاینتی چه دامنه‌ای را resolve کرده
-- **4D Flow Analyzer** — زمان × IP مبدأ × IP مقصد × سرویس (با Plotly 3D)
+- **IP مبدأ و IP مقصد** برای VPN/PPP، Hotspot، DNS، Firewall
+- **مسیر DHCP** (Offer → Ack → Bound) به صورت گرافیکی
+- **DNS** — کلاینت، دامنه، IP مقصد resolve شده
+- **ورود به روتر** — چه کسی، از کدام IP، چند بار login کرده
+- **فیلتر و مرتب‌سازی** بر اساس تاریخ، IP، کاربر، سرویس
+- **4D Flow Analyzer** — زمان × IP مبدأ × IP مقصد × سرویس
+
+---
+
+## 🖥️ کجا نصب کنم؟ Container روی MikroTik یا Ubuntu/Debian؟
+
+**هر دو روش کار می‌کنند.** توصیه ما: **Ubuntu/Debian** (پایدارتر و راحت‌تر).
+
+| روش | مزیت | معایب |
+|-----|------|-------|
+| **Ubuntu/Debian سرور** ✅ پیشنهادی | RAM/CPU بیشتر، نصب آسان، چند روتر | نیاز به یک سرور/VM |
+| **Container روی MikroTik** | همه‌چیز روی خود روتر | RAM محدود، نیاز USB/NVMe، Container Mode |
+
+### روش ۱ — Ubuntu / Debian (پیشنهادی)
+
+```bash
+# روی سرور Ubuntu/Debian:
+sudo bash install-debian.sh
+```
+
+بعد از نصب:
+- **داشبورد:** `http://IP_سرور:8080`
+- **Syslog:** `IP_سرور:514/udp`
+
+### روش ۲ — Container روی MikroTik 7.13
+
+فایل `mikrotik/setup-routeros.rsc` — فقط اگر Container Mode فعال دارید.
+
+---
+
+## ⚙️ تنظیم MikroTik — فوروارد لاگ به سرور
+
+**IP سرور Ubuntu را جایگزین کنید** (`192.168.88.100`):
+
+```
+/system logging action set [find name=remote] remote=192.168.88.100 remote-port=514 target=remote
+/system logging add action=remote topics=account
+/system logging add action=remote topics=dhcp
+/system logging add action=remote topics=dns
+/system logging add action=remote topics=firewall
+/system logging add action=remote topics=hotspot
+/system logging add action=remote topics=ppp
+/system logging add action=remote topics=wireless
+/system logging add action=remote topics=system
+```
+
+یا فایل آماده: **`mikrotik/forward-logs-to-server.rsc`** را import کنید.
+
+بعد از این تنظیمات، **همه لاگ‌ها** به سرور analyzer می‌رسند و در داشبورد نمایش داده می‌شوند.
 
 ---
 

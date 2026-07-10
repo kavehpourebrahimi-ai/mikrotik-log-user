@@ -47,23 +47,31 @@ class LogStore:
         limit: int | None = None,
         service: str | None = None,
         search: str | None = None,
+        date_from: str | None = None,
+        date_to: str | None = None,
+        source_ip: str | None = None,
+        dest_ip: str | None = None,
+        username: str | None = None,
+        sort_by: str = "timestamp",
+        sort_order: str = "desc",
     ) -> list[LogEvent]:
+        from traffic_analyzer import filter_events, sort_events
+
         with self._lock:
             events = list(self._events)
-        if service:
-            events = [e for e in events if e.service == service]
-        if search:
-            q = search.lower()
-            events = [
-                e
-                for e in events
-                if q in e.message.lower()
-                or q in e.raw.lower()
-                or q in e.dns_query.lower()
-                or q in e.source_ip
-            ]
+        events = filter_events(
+            events,
+            service=service,
+            search=search,
+            date_from=date_from,
+            date_to=date_to,
+            source_ip=source_ip,
+            dest_ip=dest_ip,
+            username=username,
+        )
+        events = sort_events(events, sort_by=sort_by, order=sort_order)
         if limit:
-            events = events[-limit:]
+            events = events[:limit]
         return events
 
     def get_stats(self) -> dict:

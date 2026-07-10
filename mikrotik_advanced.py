@@ -82,16 +82,34 @@ class MikroTikConnection:
         output = self.run("/ip/dns/cache/print")
         return _parse_ros_table_as_dicts(output)
 
+    def fetch_ppp_active(self) -> list[dict[str, str]]:
+        output = self.run("/ppp/active/print detail")
+        return _parse_ros_detail(output)
+
+    def fetch_hotspot_active(self) -> list[dict[str, str]]:
+        output = self.run("/ip/hotspot/active/print detail")
+        return _parse_ros_detail(output)
+
     def configure_remote_syslog(self, remote_ip: str, port: int = 514) -> str:
-        """Point MikroTik logging to our syslog collector."""
-        commands = [
-            f'/system logging action set [find name=remote] remote={remote_ip} remote-port={port} target=remote',
-            '/system logging add action=remote topics=info,debug,error,warning',
-            '/system logging add action=remote topics=dhcp,!debug',
-            '/system logging add action=remote topics=dns,!debug',
-            '/system logging add action=remote topics=firewall,!debug',
-            '/system logging add action=remote topics=hotspot,!debug',
+        """Configure MikroTik to forward ALL relevant logs to collector server."""
+        topics = [
+            "info,warning,error,critical",
+            "account",
+            "dhcp",
+            "dns",
+            "firewall",
+            "hotspot",
+            "ppp",
+            "wireless",
+            "system",
+            "route",
+            "debug",
         ]
+        commands = [
+            f'/system logging action set [find name=remote] remote={remote_ip} remote-port={port} target=remote bsd-syslog=yes syslog-facility=daemon',
+        ]
+        for topic in topics:
+            commands.append(f'/system logging add action=remote topics={topic}')
         results = []
         for cmd in commands:
             try:
@@ -99,6 +117,25 @@ class MikroTikConnection:
             except Exception as exc:
                 results.append(str(exc))
         return "\n".join(results)
+
+    @staticmethod
+    def syslog_setup_script(remote_ip: str, port: int = 514) -> str:
+        """Generate RouterOS script to forward logs to external server."""
+        lines = [
+            f"# Forward all MikroTik logs to collector: {remote_ip}:{port}",
+            f'/system logging action set [find name=remote] remote={remote_ip} remote-port={port} target=remote bsd-syslog=yes',
+            '/system logging add action=remote topics=info,warning,error,critical',
+            '/system logging add action=remote topics=account',
+            '/system logging add action=remote topics=dhcp',
+            '/system logging add action=remote topics=dns',
+            '/system logging add action=remote topics=firewall',
+            '/system logging add action=remote topics=hotspot',
+            '/system logging add action=remote topics=ppp',
+            '/system logging add action=remote topics=wireless',
+            '/system logging add action=remote topics=system',
+            '/system logging add action=remote topics=route',
+        ]
+        return "\n".join(lines)
 
     def get_identity(self) -> dict[str, str]:
         output = self.run("/system/identity/print")

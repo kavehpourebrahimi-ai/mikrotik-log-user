@@ -2,22 +2,22 @@
 
 from __future__ import annotations
 
-import json
-import threading
 from datetime import datetime
 
 from flask import Flask, jsonify, render_template, request
 from flask_socketio import SocketIO
 
 import config
-from log_parser import parse_log_line
 from mikrotik_advanced import MikroTikConnection
-from syslog_server import LogStore, SyslogServer, log_store
+from syslog_server import SyslogServer, log_store
 from traffic_analyzer import (
     analyze_user_traffic,
     build_flow_matrix,
     dhcp_timeline,
     dns_resolution_map,
+    hotspot_activity,
+    login_audit,
+    vpn_summary,
 )
 
 app = Flask(__name__, template_folder="templates", static_folder="static")
@@ -41,6 +41,21 @@ def _ensure_syslog() -> SyslogServer:
     return _syslog_server
 
 
+def _query_params():
+    return {
+        "limit": request.args.get("limit", 500, type=int),
+        "service": request.args.get("service") or None,
+        "search": request.args.get("q") or None,
+        "date_from": request.args.get("date_from") or None,
+        "date_to": request.args.get("date_to") or None,
+        "source_ip": request.args.get("source_ip") or None,
+        "dest_ip": request.args.get("dest_ip") or None,
+        "username": request.args.get("username") or None,
+        "sort_by": request.args.get("sort_by", "timestamp"),
+        "sort_order": request.args.get("sort_order", "desc"),
+    }
+
+
 @app.route("/")
 def index():
     return render_template(
@@ -57,7 +72,7 @@ def api_status():
     return jsonify(
         {
             "syslog_port": srv.port,
-            "log_count": len(log_store.get_events()),
+            "log_count": len(log_store.get_events(limit=999999)),
             "router_ip": _connected_router,
             "router_reachable": conn.ping(),
             "timestamp": datetime.now().isoformat(),
@@ -79,13 +94,11 @@ def api_connect():
         identity = conn.get_identity()
         _connected_router = host
 
-        # Pull existing logs from router
-        raw_logs = conn.fetch_logs(count=1000)
+        raw_logs = conn.fetch_logs(count=2000)
         for line in raw_logs:
             log_store.add_raw(line, source=host)
 
-        # Optionally configure remote syslog to this collector
-        collector_ip = data.get("collector_ip", "172.17.0.1")
+        collector_ip = data.get("collector_ip", request.host.split(":")[0])
         if data.get("setup_syslog", False):
             conn.configure_remote_syslog(collector_ip, config.SYSLOG_PORT)
 
@@ -96,6 +109,7 @@ def api_connect():
                 "host": host,
                 "identity": identity,
                 "imported_logs": len(raw_logs),
+                "syslog_script": MikroTikConnection.syslog_setup_script(collector_ip, config.SYSLOG_PORT),
             }
         )
     except Exception as exc:
@@ -104,21 +118,28 @@ def api_connect():
 
 @app.route("/api/logs")
 def api_logs():
-    limit = request.args.get("limit", 200, type=int)
-    service = request.args.get("service")
-    search = request.args.get("q")
-    events = log_store.get_events(limit=limit, service=service, search=search)
-    return jsonify([e.to_dict() for e in reversed(events)])
+    params = _query_params()
+    events = log_store.get_events(**params)
+    return jsonify([e.to_dict() for e in events])
 
 
 @app.route("/api/stats")
 def api_stats():
-    return jsonify(log_store.get_stats())
+    params = _query_params()
+    del params["sort_by"]
+    del params["sort_order"]
+    events = log_store.get_events(**params, limit=999999)
+    from log_parser import aggregate_events
+
+    return jsonify(aggregate_events(events))
 
 
 @app.route("/api/analyzer/4d")
 def api_4d_analyzer():
-    events = log_store.get_events(limit=5000)
+    params = _query_params()
+    del params["sort_by"]
+    del params["sort_order"]
+    events = log_store.get_events(**params, limit=999999)
     return jsonify(
         {
             "flow_matrix": build_flow_matrix(events),
@@ -129,16 +150,60 @@ def api_4d_analyzer():
     )
 
 
+@app.route("/api/vpn")
+def api_vpn():
+    params = _query_params()
+    del params["sort_by"]
+    del params["sort_order"]
+    params["service"] = "vpn"
+    events = log_store.get_events(**params, limit=999999)
+    return jsonify(vpn_summary(events))
+
+
+@app.route("/api/hotspot")
+def api_hotspot():
+    params = _query_params()
+    del params["sort_by"]
+    del params["sort_order"]
+    params["service"] = "hotspot"
+    events = log_store.get_events(**params, limit=999999)
+    return jsonify(hotspot_activity(events))
+
+
+@app.route("/api/login-audit")
+def api_login_audit():
+    params = _query_params()
+    del params["sort_by"]
+    del params["sort_order"]
+    events = log_store.get_events(**params, limit=999999)
+    return jsonify(login_audit(events))
+
+
 @app.route("/api/dhcp")
 def api_dhcp():
-    events = log_store.get_events(limit=5000, service="dhcp")
+    params = _query_params()
+    del params["sort_by"]
+    del params["sort_order"]
+    params["service"] = "dhcp"
+    events = log_store.get_events(**params, limit=999999)
     return jsonify(dhcp_timeline(events))
 
 
 @app.route("/api/dns")
 def api_dns():
-    events = log_store.get_events(limit=5000, service="dns")
+    params = _query_params()
+    del params["sort_by"]
+    del params["sort_order"]
+    params["service"] = "dns"
+    events = log_store.get_events(**params, limit=999999)
     return jsonify(dns_resolution_map(events))
+
+
+@app.route("/api/mikrotik/syslog-script")
+def api_syslog_script():
+    remote_ip = request.args.get("server_ip", request.host.split(":")[0])
+    port = request.args.get("port", config.SYSLOG_PORT, type=int)
+    return jsonify({"script": MikroTikConnection.syslog_setup_script(remote_ip, port)})
 
 
 @app.route("/api/router/live", methods=["POST"])
@@ -152,6 +217,8 @@ def api_router_live():
             "leases": conn.fetch_dhcp_leases(),
             "dns_cache": conn.fetch_dns_cache(),
             "connections": conn.fetch_connections()[:50],
+            "ppp_active": conn.fetch_ppp_active(),
+            "hotspot_active": conn.fetch_hotspot_active(),
         }
         conn.disconnect()
         return jsonify(result)
@@ -162,7 +229,7 @@ def api_router_live():
 @app.route("/api/export")
 def api_export():
     path = log_store.save_snapshot()
-    return jsonify({"path": str(path), "count": len(log_store.get_events())})
+    return jsonify({"path": str(path), "count": len(log_store.get_events(limit=999999))})
 
 
 def run_dashboard(host: str | None = None, port: int | None = None) -> None:

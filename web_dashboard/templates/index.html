@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="fa" dir="rtl">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>MikroTik 4D Syslog Analyzer</title>
+  <title>تحلیل‌گر Syslog میکروتیک</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/plotly.js-dist-min@2.27.0/plotly.min.js"></script>
   <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
@@ -14,73 +14,210 @@
     <div class="brand">
       <span class="logo">◈</span>
       <div>
-        <h1>MikroTik 4D Syslog Analyzer</h1>
-        <p class="subtitle">Full-size logs · DHCP flow · DNS resolution paths</p>
+        <h1>تحلیل‌گر Syslog میکروتیک</h1>
+        <p class="subtitle">IP مبدأ · IP مقصد · VPN/PPP · Hotspot · DNS · DHCP · ورود به روتر</p>
       </div>
     </div>
     <div class="connect-bar">
-      <input id="routerIp" type="text" placeholder="MikroTik IP (e.g. 192.168.88.1)" value="{{ default_host }}" />
-      <input id="routerUser" type="text" placeholder="User" value="admin" />
-      <input id="routerPass" type="password" placeholder="Password" />
-      <label class="checkbox"><input id="setupSyslog" type="checkbox" /> Auto-configure remote syslog</label>
-      <button id="connectBtn" class="btn primary">Connect</button>
-      <span id="statusBadge" class="badge offline">Offline</span>
+      <input id="routerIp" type="text" placeholder="IP میکروتیک" value="{{ default_host }}" />
+      <input id="routerUser" type="text" placeholder="کاربر" value="admin" />
+      <input id="routerPass" type="password" placeholder="رمز عبور" />
+      <label class="checkbox"><input id="setupSyslog" type="checkbox" checked /> تنظیم خودکار remote syslog</label>
+      <button id="connectBtn" class="btn primary">اتصال</button>
+      <span id="statusBadge" class="badge offline">قطع</span>
     </div>
   </header>
 
+  <!-- فیلترهای سراسری -->
+  <section class="filter-bar">
+    <input id="dateFrom" type="datetime-local" title="از تاریخ" />
+    <input id="dateTo" type="datetime-local" title="تا تاریخ" />
+    <input id="filterSourceIp" type="text" placeholder="IP مبدأ" />
+    <input id="filterDestIp" type="text" placeholder="IP مقصد / دامنه" />
+    <input id="filterUsername" type="text" placeholder="نام کاربر" />
+    <input id="logSearch" type="search" placeholder="جستجو در لاگ‌ها…" />
+    <select id="sortBy">
+      <option value="timestamp">مرتب‌سازی: تاریخ</option>
+      <option value="service">مرتب‌سازی: سرویس</option>
+      <option value="source_ip">مرتب‌سازی: IP مبدأ</option>
+      <option value="dest_ip">مرتب‌سازی: IP مقصد</option>
+      <option value="username">مرتب‌سازی: کاربر</option>
+    </select>
+    <select id="sortOrder">
+      <option value="desc">نزولی</option>
+      <option value="asc">صعودی</option>
+    </select>
+    <button id="applyFilter" class="btn">اعمال فیلتر</button>
+  </section>
+
+  <!-- تب‌ها -->
+  <nav class="tabs">
+    <button class="tab active" data-tab="overview">نمای کلی</button>
+    <button class="tab" data-tab="vpn">VPN / PPP</button>
+    <button class="tab" data-tab="hotspot">Hotspot</button>
+    <button class="tab" data-tab="dns">DNS</button>
+    <button class="tab" data-tab="dhcp">DHCP</button>
+    <button class="tab" data-tab="login">ورود به روتر</button>
+    <button class="tab" data-tab="logs">لاگ زنده</button>
+  </nav>
+
   <main class="grid">
-    <section class="panel kpi-row">
-      <div class="kpi"><span id="kpiTotal">0</span><label>Total Logs</label></div>
-      <div class="kpi"><span id="kpiDhcp">0</span><label>DHCP Events</label></div>
-      <div class="kpi"><span id="kpiDns">0</span><label>DNS Queries</label></div>
-      <div class="kpi"><span id="kpiFirewall">0</span><label>Firewall</label></div>
-      <div class="kpi"><span id="kpiRouter">—</span><label>Router</label></div>
+    <!-- KPI -->
+    <section class="panel kpi-row tab-panel" data-panel="overview">
+      <div class="kpi"><span id="kpiTotal">0</span><label>کل لاگ‌ها</label></div>
+      <div class="kpi"><span id="kpiVpn">0</span><label>VPN/PPP</label></div>
+      <div class="kpi"><span id="kpiHotspot">0</span><label>Hotspot</label></div>
+      <div class="kpi"><span id="kpiDns">0</span><label>DNS</label></div>
+      <div class="kpi"><span id="kpiLogin">0</span><label>ورود به روتر</label></div>
+      <div class="kpi"><span id="kpiRouter">—</span><label>روتر</label></div>
     </section>
 
-    <section class="panel wide">
-      <h2>4D Flow Analyzer <small>Time × Source × Destination × Service</small></h2>
+    <!-- 4D Analyzer -->
+    <section class="panel wide tab-panel" data-panel="overview">
+      <h2>تحلیل‌گر ۴ بعدی <small>زمان × IP مبدأ × IP مقصد × سرویس</small></h2>
       <div id="flow3d" class="chart-box tall"></div>
     </section>
 
-    <section class="panel">
-      <h2>Log Timeline</h2>
+    <section class="panel tab-panel" data-panel="overview">
+      <h2>نمودار زمانی</h2>
       <canvas id="timelineChart"></canvas>
     </section>
 
-    <section class="panel">
-      <h2>Service Distribution</h2>
+    <section class="panel tab-panel" data-panel="overview">
+      <h2>توزیع سرویس‌ها</h2>
       <canvas id="serviceChart"></canvas>
     </section>
 
-    <section class="panel wide">
-      <h2>DHCP Lifecycle Flow</h2>
+    <!-- VPN / PPP -->
+    <section class="panel wide tab-panel hidden" data-panel="vpn">
+      <h2>اتصالات VPN / PPP — IP مبدأ و مقصد</h2>
+      <div id="vpnSummary" class="summary-box"></div>
+      <div class="data-table-wrap">
+        <table class="data-table" id="vpnTable">
+          <thead>
+            <tr>
+              <th data-sort="time">زمان ↕</th>
+              <th data-sort="username">کاربر ↕</th>
+              <th data-sort="vpn_type">نوع VPN ↕</th>
+              <th data-sort="action">عملیات ↕</th>
+              <th data-sort="source_ip">IP مبدأ ↕</th>
+              <th data-sort="dest_ip">IP مقصد ↕</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Hotspot -->
+    <section class="panel wide tab-panel hidden" data-panel="hotspot">
+      <h2>فعالیت Hotspot</h2>
+      <div id="hotspotSummary" class="summary-box"></div>
+      <div class="data-table-wrap">
+        <table class="data-table" id="hotspotTable">
+          <thead>
+            <tr>
+              <th>زمان</th>
+              <th>کاربر</th>
+              <th>عملیات</th>
+              <th>IP مبدأ</th>
+              <th>IP مقصد</th>
+              <th>MAC</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- DNS -->
+    <section class="panel wide tab-panel hidden" data-panel="dns">
+      <h2>تحلیل DNS — کلاینت، دامنه، IP مقصد</h2>
+      <canvas id="dnsChart" style="max-height:300px"></canvas>
+      <div class="data-table-wrap">
+        <table class="data-table" id="dnsTable">
+          <thead>
+            <tr>
+              <th>دامنه</th>
+              <th>تعداد</th>
+              <th>IP مبدأ (کلاینت)</th>
+              <th>IP مقصد (resolve شده)</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- DHCP -->
+    <section class="panel wide tab-panel hidden" data-panel="dhcp">
+      <h2>مسیر DHCP</h2>
       <div id="dhcpFlow" class="flow-list"></div>
     </section>
 
-    <section class="panel">
-      <h2>Top DNS Queries</h2>
-      <canvas id="dnsChart"></canvas>
+    <!-- Login audit -->
+    <section class="panel wide tab-panel hidden" data-panel="login">
+      <h2>گزارش ورود به MikroTik — چه کسی، از کدام IP، چند بار</h2>
+      <div id="loginSummary" class="summary-box"></div>
+      <div class="data-table-wrap">
+        <table class="data-table" id="loginUsersTable">
+          <thead>
+            <tr>
+              <th>کاربر</th>
+              <th>تعداد ورود</th>
+              <th>آخرین ورود</th>
+              <th>IPهای مبدأ</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <h3 style="margin-top:1rem">جزئیات ورود</h3>
+      <div class="data-table-wrap">
+        <table class="data-table" id="loginEventsTable">
+          <thead>
+            <tr>
+              <th>زمان</th>
+              <th>کاربر</th>
+              <th>عملیات</th>
+              <th>IP مبدأ</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
     </section>
 
-    <section class="panel">
-      <h2>IP Traffic Pairs</h2>
-      <canvas id="pairsChart"></canvas>
-    </section>
-
-    <section class="panel wide">
-      <h2>Live Syslog Stream</h2>
+    <!-- Live logs -->
+    <section class="panel wide tab-panel hidden" data-panel="logs">
+      <h2>جریان زنده Syslog</h2>
       <div class="log-toolbar">
-        <input id="logSearch" type="search" placeholder="Filter logs…" />
         <select id="logService">
-          <option value="">All services</option>
-          <option value="dhcp">DHCP</option>
-          <option value="dns">DNS</option>
-          <option value="firewall">Firewall</option>
+          <option value="">همه سرویس‌ها</option>
+          <option value="vpn">VPN/PPP</option>
           <option value="hotspot">Hotspot</option>
+          <option value="dns">DNS</option>
+          <option value="dhcp">DHCP</option>
+          <option value="firewall">Firewall</option>
+          <option value="login">ورود</option>
           <option value="system">System</option>
         </select>
       </div>
-      <div id="logStream" class="log-stream"></div>
+      <div class="data-table-wrap">
+        <table class="data-table" id="logsTable">
+          <thead>
+            <tr>
+              <th>زمان</th>
+              <th>سرویس</th>
+              <th>IP مبدأ</th>
+              <th>IP مقصد</th>
+              <th>کاربر</th>
+              <th>پیام</th>
+            </tr>
+          </thead>
+          <tbody id="logStream"></tbody>
+        </table>
+      </div>
     </section>
   </main>
 
