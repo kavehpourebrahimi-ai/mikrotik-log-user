@@ -6,7 +6,9 @@
 ✅ **فعالیت کاربر** - بر اساس زمان (روز، ماه، سال)  
 ✅ **نمایش تمام اتصالات** - IP و پروتکل  
 ✅ **جستجوی پیشرفته** - بر اساس گروه و نام  
-✅ **صادرات گزارش** - برای ارائه و تجزیه
+✅ **صادرات گزارش** - برای ارائه و تجزیه  
+✅ **4D Syslog Analyzer** - داشبورد گرافیکی با نمایش مسیر DHCP و DNS  
+✅ **نصب روی MikroTik 7.13** - Container/App روی روتر برای Syslog کامل
 
 ---
 
@@ -58,6 +60,119 @@ MIKROTIK_PORT=22
 ```bash
 python main.py
 ```
+
+### **د) داشبورد 4D Syslog Analyzer (گرافیکی)**
+
+```bash
+python main.py --dashboard
+```
+
+سپس در مرورگر باز کنید:
+
+```
+http://<MIKROTIK_IP>:8080
+```
+
+IP روتر MikroTik را وارد کنید تا:
+- **لاگ‌های کامل** (Full-size syslog) دریافت شوند
+- **IP مبدأ و IP مقصد** برای VPN/PPP، Hotspot، DNS، Firewall
+- **مسیر DHCP** (Offer → Ack → Bound) به صورت گرافیکی
+- **DNS** — کلاینت، دامنه، IP مقصد resolve شده
+- **ورود به روتر** — چه کسی، از کدام IP، چند بار login کرده
+- **فیلتر و مرتب‌سازی** بر اساس تاریخ، IP، کاربر، سرویس
+- **4D Flow Analyzer** — زمان × IP مبدأ × IP مقصد × سرویس
+
+---
+
+## 🖥️ کجا نصب کنم؟ Container روی MikroTik یا Ubuntu/Debian؟
+
+**هر دو روش کار می‌کنند.** توصیه ما: **Ubuntu/Debian** (پایدارتر و راحت‌تر).
+
+| روش | مزیت | معایب |
+|-----|------|-------|
+| **Ubuntu/Debian سرور** ✅ پیشنهادی | RAM/CPU بیشتر، نصب آسان، چند روتر | نیاز به یک سرور/VM |
+| **Container روی MikroTik** | همه‌چیز روی خود روتر | RAM محدود، نیاز USB/NVMe، Container Mode |
+
+### روش ۱ — Ubuntu / Debian (پیشنهادی)
+
+```bash
+# روی سرور Ubuntu/Debian:
+sudo bash install-debian.sh
+```
+
+بعد از نصب:
+- **داشبورد:** `http://IP_سرور:8080`
+- **Syslog:** `IP_سرور:514/udp`
+
+### روش ۲ — Container روی MikroTik 7.13
+
+فایل `mikrotik/setup-routeros.rsc` — فقط اگر Container Mode فعال دارید.
+
+---
+
+## ⚙️ تنظیم MikroTik — فوروارد لاگ به سرور
+
+**IP سرور Ubuntu را جایگزین کنید** (`192.168.88.100`):
+
+```
+/system logging action set [find name=remote] remote=192.168.88.100 remote-port=514 target=remote
+/system logging add action=remote topics=account
+/system logging add action=remote topics=dhcp
+/system logging add action=remote topics=dns
+/system logging add action=remote topics=firewall
+/system logging add action=remote topics=hotspot
+/system logging add action=remote topics=ppp
+/system logging add action=remote topics=wireless
+/system logging add action=remote topics=system
+```
+
+یا فایل آماده: **`mikrotik/forward-logs-to-server.rsc`** را import کنید.
+
+بعد از این تنظیمات، **همه لاگ‌ها** به سرور analyzer می‌رسند و در داشبورد نمایش داده می‌شوند.
+
+---
+
+## 📦 نصب App روی MikroTik RouterOS 7.13
+
+می‌توانید این برنامه را **روی خود روتر** به عنوان Container نصب کنید:
+
+### 1. فعال‌سازی Container Mode
+
+```
+/system/device-mode/update container=yes
+```
+(نیاز به فشار دادن دکمه فیزیکی روی روتر)
+
+### 2. Build و Deploy
+
+```bash
+# روی PC:
+docker build -t mikrotik-4d-analyzer .
+docker save mikrotik-4d-analyzer | gzip > analyzer.tar.gz
+
+# انتقال analyzer.tar.gz به MikroTik و import:
+/container/add file=analyzer.tar.gz interface=veth-analyzer root-dir=disk1/analyzer name=4d-analyzer start-on-boot=yes
+/container/start 0
+```
+
+### 3. تنظیمات RouterOS
+
+فایل کامل: `mikrotik/setup-routeros.rsc`
+
+```
+/system/logging/action/set [find name=remote] remote=172.17.0.2 remote-port=514
+/system/logging/add action=remote topics=dhcp,!debug
+/system/logging/add action=remote topics=dns,!debug
+/system/logging/add action=remote topics=firewall,!debug
+```
+
+### 4. دسترسی
+
+```
+http://192.168.88.1:8080
+```
+
+IP روتر را وارد کنید → تمام گرافیک‌ها و لاگ‌ها نمایش داده می‌شوند.
 
 ---
 
@@ -287,18 +402,26 @@ python main.py
 
 ```
 mikrotik-log-user/
-├── main.py                      # 🎯 برنامه اصلی
+├── main.py                      # 🎯 برنامه اصلی + --dashboard
 ├── config.py                    # ⚙️  تنظیمات
-├── mikrotik_advanced.py         # 🔌 اتصال Mikrotik (جدید)
-├── traffic_analyzer.py          # 📊 تجزیه ترافیک (جدید)
+├── mikrotik_advanced.py         # 🔌 اتصال Mikrotik (SSH)
+├── traffic_analyzer.py          # 📊 تجزیه ترافیک + 4D flow
 ├── user_manager.py              # 👤 مدیریت کاربران
-├── log_parser.py               # 📜 پردازش لاگ‌ها
-├── requirements.txt            # 📦 وابستگی‌ها
-├── .env.example               # 📋 مثال تنظیمات
-├── install.sh                 # 🐧 نصب Linux/Mac
-├── install.bat                # 🖥️  نصب Windows
-├── .gitignore                 # 🚫 فایل‌های نادیده
-└── README.md                  # 📖 این فایل
+├── log_parser.py                # 📜 پردازش لاگ‌ها (DHCP/DNS)
+├── syslog_server.py             # 📡 UDP Syslog collector
+├── web_dashboard/               # 🖥️  داشبورد گرافیکی
+│   ├── app.py                   #    Flask + WebSocket
+│   ├── templates/index.html     #    4D Analyzer UI
+│   └── static/                  #    CSS + JS + Charts
+├── mikrotik/                    # 📦 نصب روی RouterOS 7.13
+│   ├── app.yaml                 #    App container definition
+│   └── setup-routeros.rsc       #    RouterOS setup script
+├── Dockerfile                   # 🐳 Container image
+├── requirements.txt             # 📦 وابستگی‌ها
+├── .env.example                 # 📋 مثال تنظیمات
+├── install.sh                   # 🐧 نصب Linux/Mac
+├── install.bat                  # 🖥️  نصب Windows
+└── README.md                    # 📖 این فایل
 ```
 
 ---

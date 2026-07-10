@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MikroTik Log Analyzer</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/plotly.js-dist-min@2.27.0/plotly.min.js"></script>
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+  <link rel="stylesheet" href="/static/css/dashboard.css" />
+</head>
+<body>
+  <div class="app-layout">
+    <!-- Sidebar — FortiAnalyzer style -->
+    <aside class="sidebar">
+      <div class="sidebar-brand">
+        <div class="brand-icon">M</div>
+        <div>
+          <strong>MTK Analyzer</strong>
+          <small>MikroTik Log Stack</small>
+        </div>
+      </div>
+      <nav class="sidebar-nav">
+        <button class="nav-item active" data-page="dashboard"><span class="icon">📊</span> داشبورد</button>
+        <button class="nav-item" data-page="users"><span class="icon">👥</span> کاربران</button>
+        <button class="nav-item" data-page="tunnels"><span class="icon">🔗</span> IPIP / تونل</button>
+        <button class="nav-item" data-page="ppp"><span class="icon">🔐</span> PPP / VPN</button>
+        <button class="nav-item" data-page="hotspot"><span class="icon">📶</span> Hotspot</button>
+        <button class="nav-item" data-page="dns"><span class="icon">🌐</span> DNS</button>
+        <button class="nav-item" data-page="dhcp"><span class="icon">📋</span> DHCP</button>
+        <button class="nav-item" data-page="login"><span class="icon">🔑</span> ورود به روتر</button>
+        <button class="nav-item" data-page="logs"><span class="icon">📜</span> پشته لاگ</button>
+      </nav>
+      <div class="sidebar-footer">
+        <div id="sidebarLogCount" class="log-count">0 لاگ</div>
+        <div id="sidebarRouter" class="router-name">—</div>
+      </div>
+    </aside>
+
+    <!-- Main -->
+    <div class="main-area">
+      <header class="topbar">
+        <div class="topbar-title" id="pageTitle">داشبورد</div>
+        <div class="topbar-actions">
+          <input id="routerIp" type="text" placeholder="IP میکروتیک ۱" value="{{ default_host }}" class="input-sm" />
+          <input id="peerIp" type="text" placeholder="IP میکروتیک ۲ (IPIP peer)" class="input-sm" />
+          <input id="routerUser" type="text" placeholder="کاربر" value="admin" class="input-sm" />
+          <input id="routerPass" type="password" placeholder="رمز" class="input-sm" />
+          <label class="chk"><input id="setupSyslog" type="checkbox" checked /> syslog</label>
+          <button id="connectBtn" class="btn-accent">اتصال</button>
+          <button id="syncBtn" class="btn-outline">بروزرسانی</button>
+          <span id="statusBadge" class="badge off">قطع</span>
+        </div>
+      </header>
+
+      <!-- Global filters -->
+      <div class="filter-row">
+        <input id="dateFrom" type="datetime-local" />
+        <input id="dateTo" type="datetime-local" />
+        <input id="filterSourceIp" type="text" placeholder="IP مبدأ" class="input-sm" />
+        <input id="filterDestIp" type="text" placeholder="IP مقصد" class="input-sm" />
+        <input id="filterUsername" type="text" placeholder="کاربر" class="input-sm" />
+        <input id="logSearch" type="search" placeholder="جستجو…" class="input-sm" />
+        <select id="sortBy">
+          <option value="timestamp">تاریخ</option>
+          <option value="username">کاربر</option>
+          <option value="source_ip">IP مبدأ</option>
+          <option value="dest_ip">IP مقصد</option>
+          <option value="service">سرویس</option>
+        </select>
+        <select id="sortOrder"><option value="desc">نزولی</option><option value="asc">صعودی</option></select>
+        <button id="applyFilter" class="btn-outline">اعمال</button>
+      </div>
+
+      <div class="content">
+        <!-- Dashboard -->
+        <section class="page active" id="page-dashboard">
+          <div class="kpi-grid">
+            <div class="kpi-card"><div class="kpi-val" id="kpiTotal">0</div><div class="kpi-lbl">کل لاگ‌ها</div></div>
+            <div class="kpi-card accent"><div class="kpi-val" id="kpiUsers">0</div><div class="kpi-lbl">کاربران</div></div>
+            <div class="kpi-card vpn"><div class="kpi-val" id="kpiPppActive">0</div><div class="kpi-lbl">VPN فعال</div></div>
+            <div class="kpi-card hs"><div class="kpi-val" id="kpiHotspot">0</div><div class="kpi-lbl">Hotspot</div></div>
+            <div class="kpi-card dns"><div class="kpi-val" id="kpiDns">0</div><div class="kpi-lbl">DNS</div></div>
+            <div class="kpi-card fw"><div class="kpi-val" id="kpiLogin">0</div><div class="kpi-lbl">ورود</div></div>
+          </div>
+          <div class="panel-row">
+            <div class="panel"><h3>نمودار زمانی</h3><canvas id="timelineChart"></canvas></div>
+            <div class="panel"><h3>توزیع سرویس</h3><canvas id="serviceChart"></canvas></div>
+          </div>
+          <div class="panel"><h3>تحلیل ۴ بعدی — IP مبدأ × مقصد × زمان</h3><div id="flow3d" class="chart-lg"></div></div>
+        </section>
+
+        <!-- Users -->
+        <section class="page" id="page-users">
+          <div class="panel">
+            <h3>کاربران — تمام لاگ‌های مرتبط (VPN + Hotspot + ورود)</h3>
+            <p class="hint">مثل FortiAnalyzer: روی هر کاربر کلیک کنید تا لاگ‌هایش را ببینید</p>
+            <div class="table-wrap">
+              <table class="data-table" id="usersTable">
+                <thead><tr>
+                  <th>کاربر</th><th>تعداد لاگ</th><th>سرویس‌ها</th><th>VPN فعال</th><th>Hotspot</th>
+                  <th>IP مبدأ</th><th>Uptime VPN</th><th>آخرین فعالیت</th><th></th>
+                </tr></thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+          <div class="panel hidden" id="userDetailPanel">
+            <h3>لاگ‌های کاربر: <span id="detailUsername"></span></h3>
+            <div class="table-wrap"><table class="data-table" id="userLogsTable">
+              <thead><tr><th>زمان</th><th>سرویس</th><th>IP مبدأ</th><th>IP مقصد</th><th>عملیات</th><th>پیام</th></tr></thead>
+              <tbody></tbody>
+            </table></div>
+          </div>
+        </section>
+
+        <!-- IPIP / Tunnel between MikroTiks -->
+        <section class="page" id="page-tunnels">
+          <div class="panel">
+            <h3>تونل IPIP / GRE / EoIP — ترافیک بین دو MikroTik</h3>
+            <p class="hint">هر دو روتر باید syslog را به این سرور بفرستند. IP میکروتیک ۲ را در بالا وارد کنید.</p>
+            <div id="tunnelPeerDiagram" class="peer-diagram"></div>
+          </div>
+          <div class="panel">
+            <h3>لینک‌های Peer — روتر ↔ روتر</h3>
+            <div class="table-wrap"><table class="data-table" id="tunnelLinksTable">
+              <thead><tr>
+                <th>روتر</th><th>تونل</th><th>نوع</th><th>IP محلی</th><th>IP Peer</th>
+                <th>روتر مقابل</th><th>وضعیت</th><th>RX</th><th>TX</th>
+              </tr></thead>
+              <tbody></tbody>
+            </table></div>
+          </div>
+          <div class="panel">
+            <h3>ترافیک عبوری از تونل (IP مبدأ → IP مقصد)</h3>
+            <div class="table-wrap"><table class="data-table" id="tunnelFlowsTable">
+              <thead><tr>
+                <th>روتر</th><th>Interface</th><th>IP مبدأ</th><th>IP مقصد</th><th>پروتکل</th><th>تعداد</th><th>آخرین</th>
+              </tr></thead>
+              <tbody></tbody>
+            </table></div>
+          </div>
+          <div class="panel">
+            <h3>لاگ‌های تونل</h3>
+            <div class="table-wrap"><table class="data-table" id="tunnelLogsTable">
+              <thead><tr><th>زمان</th><th>روتر</th><th>نوع</th><th>Interface</th><th>مبدأ</th><th>مقصد</th><th>پیام</th></tr></thead>
+              <tbody></tbody>
+            </table></div>
+          </div>
+        </section>
+
+        <!-- PPP / VPN -->
+        <section class="page" id="page-ppp">
+          <div class="vpn-cards" id="vpnServiceCards"></div>
+          <div class="panel">
+            <h3>اتصالات VPN فعال — L2TP · SSTP · PPTP · IPIP · OVPN</h3>
+            <div class="table-wrap"><table class="data-table" id="pppActiveTable">
+              <thead><tr>
+                <th>کاربر</th><th>نوع</th><th>IP اختصاصی</th><th>IP مبدأ (Caller)</th>
+                <th>Uptime</th><th>ترافیک In</th><th>ترافیک Out</th><th>Interface</th>
+              </tr></thead>
+              <tbody></tbody>
+            </table></div>
+          </div>
+          <div class="panel">
+            <h3>تاریخچه PPP از Syslog</h3>
+            <div class="table-wrap"><table class="data-table" id="pppLogTable">
+              <thead><tr><th>زمان</th><th>کاربر</th><th>نوع VPN</th><th>عملیات</th><th>IP مبدأ</th><th>IP مقصد</th><th>پیام</th></tr></thead>
+              <tbody></tbody>
+            </table></div>
+          </div>
+        </section>
+
+        <!-- Hotspot -->
+        <section class="page" id="page-hotspot">
+          <div class="panel">
+            <h3>Hotspot — کاربران آنلاین</h3>
+            <div class="table-wrap"><table class="data-table" id="hsLiveTable">
+              <thead><tr><th>کاربر</th><th>IP</th><th>MAC</th><th>Uptime</th><th>Bytes In</th><th>Bytes Out</th></tr></thead>
+              <tbody></tbody>
+            </table></div>
+          </div>
+          <div class="panel">
+            <h3>لاگ Hotspot</h3>
+            <div class="table-wrap"><table class="data-table" id="hsLogTable">
+              <thead><tr><th>زمان</th><th>کاربر</th><th>عملیات</th><th>IP مبدأ</th><th>IP مقصد</th><th>MAC</th></tr></thead>
+              <tbody></tbody>
+            </table></div>
+          </div>
+        </section>
+
+        <!-- DNS -->
+        <section class="page" id="page-dns">
+          <div class="panel"><canvas id="dnsChart" style="max-height:280px"></canvas></div>
+          <div class="panel"><div class="table-wrap"><table class="data-table" id="dnsTable">
+            <thead><tr><th>دامنه</th><th>تعداد</th><th>IP کلاینت (مبدأ)</th><th>IP resolve (مقصد)</th></tr></thead>
+            <tbody></tbody>
+          </table></div></div>
+        </section>
+
+        <!-- DHCP -->
+        <section class="page" id="page-dhcp">
+          <div class="panel"><div id="dhcpFlow" class="flow-list"></div></div>
+        </section>
+
+        <!-- Login -->
+        <section class="page" id="page-login">
+          <div class="panel"><div class="table-wrap"><table class="data-table" id="loginUsersTable">
+            <thead><tr><th>کاربر</th><th>تعداد ورود</th><th>IPهای مبدأ</th><th>آخرین ورود</th></tr></thead>
+            <tbody></tbody>
+          </table></div></div>
+        </section>
+
+        <!-- Log Stack -->
+        <section class="page" id="page-logs">
+          <div class="panel">
+            <div class="log-toolbar">
+              <select id="logService">
+                <option value="">همه</option>
+                <option value="vpn">VPN/PPP</option>
+                <option value="hotspot">Hotspot</option>
+                <option value="dns">DNS</option>
+                <option value="dhcp">DHCP</option>
+                <option value="firewall">Firewall</option>
+                <option value="login">ورود</option>
+              </select>
+              <span id="logStackCount" class="muted"></span>
+            </div>
+            <div class="table-wrap tall"><table class="data-table" id="logsTable">
+              <thead><tr><th>زمان</th><th>سرویس</th><th>کاربر</th><th>IP مبدأ</th><th>IP مقصد</th><th>پیام</th></tr></thead>
+              <tbody></tbody>
+            </table></div>
+          </div>
+        </section>
+      </div>
+    </div>
+  </div>
+  <script src="/static/js/dashboard.js"></script>
+</body>
+</html>
