@@ -54,6 +54,7 @@ class VmsDatabase:
             user=self._cfg["user"],
             password=self._cfg["password"],
             database=self._cfg["db"],
+            charset="utf8mb4",
             cursorclass=pymysql.cursors.DictCursor,
             connect_timeout=5,
             read_timeout=10,
