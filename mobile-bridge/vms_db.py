@@ -9,7 +9,7 @@ Real schema (confirmed on a live 115-camera ONVIF install):
     device(Guid PK, ServerGuid, Mac, DriverKey, DisplayName, IPAddress,
            HttpPort, FtpPort, UserName, Password, VenderType, DeviceType,
            DriverType, ChannelCount, Id, ...)
-    channel(Guid PK / Channel_Guid, Device_Guid -> device.Guid, Name, ...)
+    channel(Guid PK, Device_Guid -> device.Guid, DisplayName, Num, Type, Id)
     channelproperty(Channel_Guid, Hidden, Disabled, DeviceIndex, ...)
 
 Note: device.HttpPort is the ONVIF/HTTP port (usually 80), NOT the RTSP port.
@@ -64,14 +64,14 @@ class VmsDatabase:
 
         sql = """
             SELECT c.Guid         AS guid,
-                   c.Name         AS name,
+                   c.DisplayName  AS name,
                    c.Device_Guid  AS device_guid,
                    d.IPAddress    AS ip,
                    d.HttpPort     AS http_port,
                    d.UserName     AS user,
                    d.Password     AS password,
                    cp.Disabled    AS disabled,
-                   cp.DeviceIndex AS channel_no
+                   COALESCE(cp.DeviceIndex, c.Num) AS channel_no
             FROM channel c
             JOIN device d ON c.Device_Guid = d.Guid
             LEFT JOIN channelproperty cp ON cp.Channel_Guid = c.Guid
