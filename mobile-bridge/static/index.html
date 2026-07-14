@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>VMS Mobile</title>
+  <link rel="stylesheet" href="/static/style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.13/dist/hls.min.js"></script>
+</head>
+<body>
+  <header id="topbar">
+    <button id="backBtn" class="hidden" aria-label="back">‹</button>
+    <h1 id="title">دوربین‌ها</h1>
+    <button id="refreshBtn" aria-label="refresh">⟳</button>
+  </header>
+
+  <!-- camera grid -->
+  <main id="gridView">
+    <div id="cameraGrid" class="grid"></div>
+    <p id="gridEmpty" class="empty hidden">دوربینی پیدا نشد. اتصال دیتابیس را بررسی کنید.</p>
+  </main>
+
+  <!-- single camera view -->
+  <main id="camView" class="hidden">
+    <div class="player-wrap">
+      <video id="player" playsinline controls></video>
+      <div id="playerMsg" class="player-msg hidden"></div>
+    </div>
+
+    <div class="tabs">
+      <button class="tab active" data-tab="live">پخش زنده</button>
+      <button class="tab" data-tab="playback">ضبط‌شده</button>
+    </div>
+
+    <section id="livePane" class="pane"></section>
+
+    <section id="playbackPane" class="pane hidden">
+      <div class="row">
+        <label>تاریخ:</label>
+        <select id="daySelect"></select>
+      </div>
+      <div id="segmentList" class="seg-list"></div>
+      <p id="segEmpty" class="empty hidden">برای این روز ضبطی وجود ندارد.</p>
+    </section>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
