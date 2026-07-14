@@ -47,6 +47,7 @@ RTSP_TEMPLATE = CFG.get("live", "rtsp_template",
                         fallback="rtsp://{user}:{password}@{ip}:{port}/0")
 RTSP_PORT = CFG.getint("live", "rtsp_port", fallback=554)
 USE_ONVIF = CFG.getboolean("live", "use_onvif", fallback=False)
+LIVE_SCALE = CFG.getint("live", "live_scale", fallback=1280)
 
 streams.configure_tools(
     ffmpeg_bin=CFG.get("tools", "ffmpeg_bin", fallback=None),
@@ -64,7 +65,7 @@ DB = VmsDatabase(
 WORK_DIR = os.path.join(tempfile.gettempdir(), "vms_bridge")
 LIVE = streams.LiveManager(os.path.join(WORK_DIR, "live"), RTSP_TEMPLATE,
                            copy_codec=COPY_LIVE, rtsp_port=RTSP_PORT,
-                           use_onvif=USE_ONVIF)
+                           use_onvif=USE_ONVIF, live_scale=LIVE_SCALE)
 PLAYBACK_DIR = os.path.join(WORK_DIR, "playback")
 os.makedirs(PLAYBACK_DIR, exist_ok=True)
 
@@ -136,20 +137,31 @@ def live_playlist(guid):
     if not cam:
         abort(404, "unknown camera")
     playlist = LIVE.ensure(cam)
-    # HEVC->H264 transcode can take 10-20s on first segment
-    for _ in range(200):
+    # HEVC->H264 transcode can take 20-40s on first segment
+    for _ in range(400):
         if os.path.isfile(playlist) and os.path.getsize(playlist) > 0:
-            break
+            st = LIVE.status(guid)
+            if st["segment_count"] > 0:
+                break
         time.sleep(0.1)
     if not os.path.isfile(playlist) or os.path.getsize(playlist) == 0:
-        log_path = os.path.join(WORK_DIR, "live", guid, "ffmpeg.log")
-        detail = ""
-        if os.path.isfile(log_path):
-            with open(log_path, encoding="utf-8", errors="replace") as fh:
-                detail = fh.read()[-800:]
-        abort(503, "live stream failed to start. ffmpeg log: " + detail)
+        st = LIVE.status(guid)
+        abort(503, "live stream failed: " + (st.get("log_tail") or "no ffmpeg log"))
     return send_file(playlist, mimetype="application/vnd.apple.mpegurl",
                      max_age=0)
+
+
+@app.route("/api/live/<guid>/status")
+def live_status(guid):
+    cam = find_camera(guid)
+    if not cam:
+        abort(404, "unknown camera")
+    LIVE.ensure(cam)
+    st = LIVE.status(guid)
+    st["camera"] = cam.name
+    if st.get("rtsp") and cam.password:
+        st["rtsp"] = st["rtsp"].replace(cam.password, "***")
+    return jsonify(st)
 
 
 @app.route("/live/<guid>/<seg>")

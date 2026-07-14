@@ -115,10 +115,23 @@ function selectTab(name) {
 }
 
 // ---- live ------------------------------------------------------------------
-function startLive() {
+async function startLive() {
   if (!currentCam) return;
-  el("livePane").innerHTML = '<p class="livehint">پخش زنده از طریق سرور…</p>';
-  playHls(`/live/${currentCam.guid}/index.m3u8`);
+  el("livePane").innerHTML = '<p class="livehint">پخش زنده از طریق سرور… (۲۰–۴۰ ثانیه صبر کنید)</p>';
+  const url = `/live/${currentCam.guid}/index.m3u8`;
+  showMsg("در حال اتصال به دوربین…");
+  try {
+    const r = await fetch(url);
+    if (!r.ok) {
+      const err = await r.text();
+      showMsg("خطا: " + err.slice(0, 300));
+      return;
+    }
+  } catch (e) {
+    showMsg("خطا در دریافت استریم: " + e.message);
+    return;
+  }
+  playHls(url);
 }
 
 // ---- playback --------------------------------------------------------------

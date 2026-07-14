@@ -126,11 +126,13 @@ class LiveManager:
     """Runs one ffmpeg RTSP->HLS worker per camera, on demand."""
 
     def __init__(self, work_dir: str, rtsp_template: str, copy_codec: bool = False,
-                 idle_timeout: int = 60, rtsp_port: int = 554, use_onvif: bool = False):
+                 idle_timeout: int = 60, rtsp_port: int = 554, use_onvif: bool = False,
+                 live_scale: int = 1280):
         self.work_dir = work_dir
         self.rtsp_template = rtsp_template
         self.rtsp_port = rtsp_port
         self.use_onvif = use_onvif
+        self.live_scale = live_scale
         self.copy_codec = copy_codec
         self.idle_timeout = idle_timeout
         self._procs: dict[str, dict] = {}
@@ -164,19 +166,24 @@ class LiveManager:
 
             rtsp = resolve_live_url(cam, self.rtsp_template, self.rtsp_port,
                                     self.use_onvif)
+            vf = []
+            if not self.copy_codec and self.live_scale > 0:
+                vf = ["-vf", f"scale={self.live_scale}:-2"]
             vcodec = ["-c:v", "copy"] if self.copy_codec else [
-                "-c:v", "libx264", "-preset", "veryfast", "-tune", "zerolatency",
-                "-pix_fmt", "yuv420p", "-g", "50",
+                "-c:v", "libx264", "-preset", "ultrafast", "-tune", "zerolatency",
+                "-pix_fmt", "yuv420p", "-g", "25", "-keyint_min", "25",
             ]
             cmd = [
                 FFMPEG, "-nostdin", "-loglevel", "warning",
                 "-rtsp_transport", "tcp",
+                "-fflags", "nobuffer", "-flags", "low_delay",
+                "-probesize", "500000", "-analyzeduration", "1000000",
                 "-i", rtsp,
-                "-an", *vcodec,
+                "-an", *vf, *vcodec,
                 "-f", "hls",
-                "-hls_time", "1",
-                "-hls_list_size", "4",
-                "-hls_flags", "delete_segments+append_list+omit_endlist",
+                "-hls_time", "2",
+                "-hls_list_size", "6",
+                "-hls_flags", "delete_segments+append_list+omit_endlist+independent_segments",
                 "-hls_segment_filename", os.path.join(cam_dir, "seg%d.ts"),
                 self.playlist_path(guid),
             ]
@@ -194,6 +201,33 @@ class LiveManager:
         with self._lock:
             if guid in self._procs:
                 self._procs[guid]["last"] = time.time()
+
+    def status(self, guid: str) -> dict:
+        cam_dir = self._cam_dir(guid)
+        playlist = self.playlist_path(guid)
+        log_path = os.path.join(cam_dir, "ffmpeg.log")
+        with self._lock:
+            info = self._procs.get(guid)
+        proc_alive = bool(info and info["proc"].poll() is None)
+        segments = []
+        if os.path.isdir(cam_dir):
+            segments = sorted(
+                f for f in os.listdir(cam_dir)
+                if f.startswith("seg") and f.endswith(".ts")
+            )
+        log_tail = ""
+        if os.path.isfile(log_path):
+            with open(log_path, encoding="utf-8", errors="replace") as fh:
+                log_tail = fh.read()[-1200:]
+        return {
+            "proc_alive": proc_alive,
+            "playlist_exists": os.path.isfile(playlist),
+            "playlist_bytes": os.path.getsize(playlist) if os.path.isfile(playlist) else 0,
+            "segment_count": len(segments),
+            "segments": segments[-4:],
+            "rtsp": info.get("rtsp", "") if info else "",
+            "log_tail": log_tail,
+        }
 
     def _reaper(self) -> None:
         while True:
