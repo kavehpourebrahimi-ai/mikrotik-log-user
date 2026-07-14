@@ -46,6 +46,11 @@ RTSP_TEMPLATE = CFG.get("live", "rtsp_template",
                         fallback="rtsp://{user}:{password}@{ip}:{port}/av0_0")
 RTSP_PORT = CFG.getint("live", "rtsp_port", fallback=554)
 
+streams.configure_tools(
+    ffmpeg_bin=CFG.get("tools", "ffmpeg_bin", fallback=None),
+    ffprobe_bin=CFG.get("tools", "ffprobe_bin", fallback=None),
+)
+
 DB = VmsDatabase(
     host=CFG.get("db", "host", fallback="127.0.0.1"),
     port=CFG.getint("db", "port", fallback=34176),
@@ -187,6 +192,7 @@ def health():
         "camera_count": len(cams),
         "record_root": RECORD_ROOT,
         "record_root_exists": os.path.isdir(RECORD_ROOT),
+        **streams.tools_status(),
     })
 
 

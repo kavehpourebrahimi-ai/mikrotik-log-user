@@ -20,7 +20,73 @@ import subprocess
 import threading
 import time
 
-FFMPEG = os.environ.get("FFMPEG_BIN", "ffmpeg")
+FFMPEG = "ffmpeg"
+FFPROBE = "ffprobe"
+
+
+def _resolve_tool(explicit: str | None, env_var: str, default_name: str) -> str:
+    if explicit:
+        return explicit
+    from_env = os.environ.get(env_var)
+    if from_env:
+        return from_env
+    found = shutil.which(default_name)
+    if found:
+        return found
+    if os.name == "nt":
+        found = shutil.which(default_name + ".exe")
+        if found:
+            return found
+    return default_name
+
+
+def _tool_available(path: str) -> bool:
+    return os.path.isfile(path) or shutil.which(path) is not None
+
+
+def configure_tools(ffmpeg_bin: str | None = None, ffprobe_bin: str | None = None) -> None:
+    """Resolve ffmpeg/ffprobe paths from config, env vars, or PATH."""
+
+    global FFMPEG, FFPROBE
+    FFMPEG = _resolve_tool(ffmpeg_bin, "FFMPEG_BIN", "ffmpeg")
+    if ffprobe_bin:
+        FFPROBE = ffprobe_bin
+    elif os.environ.get("FFPROBE_BIN"):
+        FFPROBE = os.environ["FFPROBE_BIN"]
+    elif ffmpeg_bin and os.path.isfile(ffmpeg_bin):
+        sibling = os.path.join(
+            os.path.dirname(ffmpeg_bin),
+            "ffprobe.exe" if os.name == "nt" else "ffprobe",
+        )
+        FFPROBE = sibling if os.path.isfile(sibling) else _resolve_tool(None, "FFPROBE_BIN", "ffprobe")
+    else:
+        FFPROBE = _resolve_tool(None, "FFPROBE_BIN", "ffprobe")
+
+
+def tools_status() -> dict:
+    return {
+        "ffmpeg": FFMPEG,
+        "ffprobe": FFPROBE,
+        "ffmpeg_ok": _tool_available(FFMPEG),
+        "ffprobe_ok": _tool_available(FFPROBE),
+    }
+
+
+def ensure_tools() -> None:
+    """Raise FileNotFoundError with setup hints when ffmpeg/ffprobe are missing."""
+
+    missing = [name for name, path in (("ffmpeg", FFMPEG), ("ffprobe", FFPROBE))
+               if not _tool_available(path)]
+    if not missing:
+        return
+    hint = (
+        "Install ffmpeg for Windows (https://www.gyan.dev/ffmpeg/builds/), "
+        "add its bin folder to PATH, or set full paths in config.ini:\n"
+        "  [tools]\n"
+        "  ffmpeg_bin = C:\\ffmpeg\\bin\\ffmpeg.exe\n"
+        "  ffprobe_bin = C:\\ffmpeg\\bin\\ffprobe.exe"
+    )
+    raise FileNotFoundError(f"Missing: {', '.join(missing)}. {hint}")
 
 
 def build_rtsp_url(template: str, cam, rtsp_port: int = 554) -> str:
@@ -145,8 +211,9 @@ def vdo_to_mp4(vdo_path: str, out_path: str, copy_codec: bool = False,
 def probe_rtsp(url: str, timeout: int = 8) -> bool:
     """Return True if ffprobe can open the RTSP url and find a video stream."""
 
+    ensure_tools()
     cmd = [
-        "ffprobe", "-v", "error", "-rtsp_transport", "tcp",
+        FFPROBE, "-v", "error", "-rtsp_transport", "tcp",
         "-select_streams", "v:0",
         "-show_entries", "stream=codec_name",
         "-of", "default=noprint_wrappers=1:nokey=1",

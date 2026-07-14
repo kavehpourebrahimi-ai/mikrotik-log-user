@@ -18,8 +18,16 @@ server (they are read from the VMS MySQL database, never re-entered).
 ## Requirements (on the Windows server)
 
 1. **Python 3.9+** — https://www.python.org/downloads/windows/
-2. **ffmpeg / ffprobe** — https://www.gyan.dev/ffmpeg/builds/ (add the `bin`
-   folder to `PATH`, or set the `FFMPEG_BIN` environment variable).
+2. **ffmpeg / ffprobe** — https://www.gyan.dev/ffmpeg/builds/
+   - Download **ffmpeg-release-essentials.zip**, extract (e.g. to `C:\ffmpeg`),
+     and either add `C:\ffmpeg\bin` to the system `PATH`, **or** set full paths
+     in `config.ini`:
+     ```
+     [tools]
+     ffmpeg_bin = C:\ffmpeg\bin\ffmpeg.exe
+     ffprobe_bin = C:\ffmpeg\bin\ffprobe.exe
+     ```
+   - Verify in a new Command Prompt: `ffmpeg -version` and `ffprobe -version`
 3. Python packages:
    ```
    pip install -r requirements.txt

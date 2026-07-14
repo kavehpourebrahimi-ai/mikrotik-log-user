@@ -39,6 +39,16 @@ def main() -> None:
     if not cfg.sections():
         cfg.read(os.path.join(BASE_DIR, "config.example.ini"), encoding="utf-8")
 
+    streams.configure_tools(
+        ffmpeg_bin=cfg.get("tools", "ffmpeg_bin", fallback=None),
+        ffprobe_bin=cfg.get("tools", "ffprobe_bin", fallback=None),
+    )
+    try:
+        streams.ensure_tools()
+    except FileNotFoundError as exc:
+        print(exc)
+        return
+
     db = VmsDatabase(
         host=cfg.get("db", "host", fallback="127.0.0.1"),
         port=cfg.getint("db", "port", fallback=34176),
