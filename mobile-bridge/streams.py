@@ -7,9 +7,11 @@ Everything is proxied through this machine (the VMS server):
 * Playback- read the raw .vdo (Annex-B HEVC) archive segment and repackage it
             as a progressive MP4 / HLS.
 
-HEVC is not playable in most mobile browsers, so by default the video is
-transcoded to H.264. Set ``copy_codec=True`` to avoid transcoding when you know
-the client can decode HEVC (lower CPU, but limited browser support).
+HEVC is not playable in every mobile browser when repackaged as-is, so by default
+the server does **not** transcode (`copy_codec=true`): it only repackages the
+camera's HEVC stream into HLS/MP4 and the **client** decodes it. This keeps
+server CPU low. Set ``copy_codec=false`` only if you need H.264 for old clients
+and accept high CPU load on the server.
 """
 
 from __future__ import annotations

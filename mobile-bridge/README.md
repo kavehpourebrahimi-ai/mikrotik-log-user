@@ -75,9 +75,10 @@ server (they are read from the VMS MySQL database, never re-entered).
 
 ## Notes
 
-- **Live** and **playback** are transcoded HEVC→H.264 by default so any phone
-  browser can play them. If your clients can decode HEVC and you want lower CPU,
-  set `copy_codec = true` in `config.ini` (`[live]` and/or `[playback]`).
+- **Live** and **playback** use `copy_codec=true` by default: the server only
+  repackages HEVC (no re-encoding, low CPU). The phone decodes HEVC. iPhone /
+  Safari usually works; some Android Chrome builds do not — then set
+  `copy_codec=false` in `config.ini` (heavy server CPU).
 - `GET /api/health` reports DB connectivity, camera count and whether the record
   root is visible.
 - Temporary HLS/MP4 files are written under the system temp dir

@@ -27,7 +27,7 @@ function showMsg(text) {
 function playHls(url) {
   const v = el("player");
   destroyPlayer();
-  showMsg("در حال بارگذاری… (۱۰–۲۰ ثانیه صبر کنید)");
+  showMsg("در حال بارگذاری…");
   const onReady = () => showMsg("");
   if (v.canPlayType("application/vnd.apple.mpegurl")) {
     v.src = url;
@@ -145,8 +145,8 @@ async function waitForLive(url, guid, attempts = 45) {
 
 async function startLive() {
   if (!currentCam) return;
-  el("livePane").innerHTML =
-    '<p class="livehint">پخش زنده از طریق سرور… (ممکن است ۱–۲ دقیقه طول بکشد)</p>' +
+    el("livePane").innerHTML =
+    '<p class="livehint">پخش زنده — سرور فقط پروکسی می‌کند، پخش در موبایل</p>' +
     `<img id="liveSnap" alt="" style="max-width:100%;border-radius:10px;margin-top:8px;display:none" />`;
   const url = `/live/${currentCam.guid}/index.m3u8`;
   const snap = el("liveSnap");

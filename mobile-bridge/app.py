@@ -41,8 +41,8 @@ def load_config() -> configparser.ConfigParser:
 
 CFG = load_config()
 RECORD_ROOT = CFG.get("archive", "record_root", fallback=r"E:\VMS\Record")
-COPY_LIVE = CFG.getboolean("live", "copy_codec", fallback=False)
-COPY_PLAYBACK = CFG.getboolean("playback", "copy_codec", fallback=False)
+COPY_LIVE = CFG.getboolean("live", "copy_codec", fallback=True)
+COPY_PLAYBACK = CFG.getboolean("playback", "copy_codec", fallback=True)
 RTSP_TEMPLATE = CFG.get("live", "rtsp_template",
                         fallback="rtsp://{user}:{password}@{ip}:{port}/0")
 RTSP_PORT = CFG.getint("live", "rtsp_port", fallback=554)
