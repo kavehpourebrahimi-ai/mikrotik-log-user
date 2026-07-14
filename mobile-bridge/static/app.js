@@ -115,6 +115,10 @@ function selectTab(name) {
 }
 
 // ---- live ------------------------------------------------------------------
+function plainError(text) {
+  return text.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+}
+
 async function waitForLive(url, guid, attempts = 45) {
   for (let i = 0; i < attempts; i++) {
     showMsg(`در حال اتصال… ${i + 1}/${attempts}`);
@@ -125,8 +129,8 @@ async function waitForLive(url, guid, attempts = 45) {
         await new Promise((res) => setTimeout(res, 3000));
         continue;
       }
-      const err = await r.text();
-      showMsg("خطا: " + err.slice(0, 400));
+      const err = plainError(await r.text());
+      showMsg("خطا: " + err.slice(0, 500));
       return false;
     } catch (e) {
       showMsg("خطا در شبکه: " + e.message);

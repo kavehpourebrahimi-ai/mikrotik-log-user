@@ -148,9 +148,11 @@ def live_playlist(guid):
     st = LIVE.status(guid)
     if not st["proc_alive"]:
         detail = st.get("log_tail") or "ffmpeg log empty"
+        if "404" in detail or "Stream Not Found" in detail:
+            detail += " — مسیر RTSP اشتباه است. python probe_one.py <IP> را بزنید."
         if not streams.tools_status()["ffmpeg_ok"]:
             detail = "ffmpeg not found — set [tools] ffmpeg_bin in config.ini"
-        abort(503, "ffmpeg stopped: " + detail)
+        return Response(detail, status=503, mimetype="text/plain; charset=utf-8")
     resp = Response("stream starting, retry\n", status=503, mimetype="text/plain")
     resp.headers["Retry-After"] = "3"
     return resp

@@ -16,6 +16,7 @@ and accept high CPU load on the server.
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import subprocess
@@ -27,6 +28,45 @@ import onvif_rtsp
 
 FFMPEG = "ffmpeg"
 FFPROBE = "ffprobe"
+
+# Tried in order when the configured template returns RTSP 404.
+RTSP_PROBE_TEMPLATES = [
+    "rtsp://{user}:{password}@{ip}:{port}/0",
+    "rtsp://{user}:{password}@{ip}:{port}/1",
+    "rtsp://{user}:{password}@{ip}:{port}/11",
+    "rtsp://{user}:{password}@{ip}:{port}/12",
+    "rtsp://{user}:{password}@{ip}:{port}/av0_0",
+    "rtsp://{user}:{password}@{ip}:{port}/av0_1",
+    "rtsp://{user}:{password}@{ip}:{port}/onvif1",
+    "rtsp://{user}:{password}@{ip}:{port}/cam/realmonitor?channel={channel}&subtype=0",
+]
+
+_rtsp_cache: dict[str, str] = {}
+_cache_lock = threading.Lock()
+
+
+def _cache_path(work_dir: str) -> str:
+    return os.path.join(work_dir, "_rtsp_cache.json")
+
+
+def load_rtsp_cache(work_dir: str) -> None:
+    global _rtsp_cache
+    path = _cache_path(work_dir)
+    if os.path.isfile(path):
+        try:
+            with open(path, encoding="utf-8") as fh:
+                _rtsp_cache = json.load(fh)
+        except (json.JSONDecodeError, OSError):
+            _rtsp_cache = {}
+
+
+def save_rtsp_cache(work_dir: str) -> None:
+    path = _cache_path(work_dir)
+    try:
+        with open(path, "w", encoding="utf-8") as fh:
+            json.dump(_rtsp_cache, fh, indent=2)
+    except OSError:
+        pass
 
 
 def _resolve_tool(explicit: str | None, env_var: str, default_name: str) -> str:
@@ -114,13 +154,38 @@ def build_rtsp_url(template: str, cam, rtsp_port: int = 554) -> str:
 
 
 def resolve_live_url(cam, rtsp_template: str, rtsp_port: int = 554,
-                     use_onvif: bool = False) -> str:
-    """Pick the RTSP URL for live streaming (ONVIF discovery or template)."""
+                     use_onvif: bool = False, work_dir: str | None = None,
+                     auto_probe: bool = True) -> str:
+    """Pick a working RTSP URL (ONVIF, cache, configured template, or auto-probe)."""
 
     if use_onvif:
         found = onvif_rtsp.discover_streams(cam)
         if found:
             return found[0].url
+
+    cache_key = cam.ip or cam.guid
+    with _cache_lock:
+        cached_tpl = _rtsp_cache.get(cache_key)
+    if cached_tpl:
+        return build_rtsp_url(cached_tpl, cam, rtsp_port)
+
+    templates = [rtsp_template]
+    for tpl in RTSP_PROBE_TEMPLATES:
+        if tpl not in templates:
+            templates.append(tpl)
+
+    if auto_probe:
+        ensure_tools()
+        for tpl in templates:
+            url = build_rtsp_url(tpl, cam, rtsp_port)
+            ok, _err = probe_rtsp(url, timeout=5)
+            if ok:
+                with _cache_lock:
+                    _rtsp_cache[cache_key] = tpl
+                if work_dir:
+                    save_rtsp_cache(work_dir)
+                return url
+
     return build_rtsp_url(rtsp_template, cam, rtsp_port)
 
 
@@ -140,6 +205,7 @@ class LiveManager:
         self._procs: dict[str, dict] = {}
         self._lock = threading.Lock()
         os.makedirs(work_dir, exist_ok=True)
+        load_rtsp_cache(work_dir)
         threading.Thread(target=self._reaper, daemon=True).start()
 
     def _cam_dir(self, guid: str) -> str:
@@ -170,7 +236,7 @@ class LiveManager:
                     pass
 
             rtsp = resolve_live_url(cam, self.rtsp_template, self.rtsp_port,
-                                    self.use_onvif)
+                                    self.use_onvif, work_dir=self.work_dir)
             vf = []
             if not self.copy_codec and self.live_scale > 0:
                 vf = ["-vf", f"scale={self.live_scale}:-2"]
@@ -248,7 +314,8 @@ class LiveManager:
         """Grab a single JPEG frame from the camera RTSP stream."""
 
         ensure_tools()
-        rtsp = resolve_live_url(cam, self.rtsp_template, self.rtsp_port, self.use_onvif)
+        rtsp = resolve_live_url(cam, self.rtsp_template, self.rtsp_port, self.use_onvif,
+                                work_dir=self.work_dir)
         cmd = [
             FFMPEG, "-nostdin", "-loglevel", "error",
             "-rtsp_transport", "tcp",
