@@ -66,8 +66,11 @@ def main() -> None:
     print(f"Probing against camera '{cam.name}' ({cam.ip}:{rtsp_port}) ...\n")
     for tpl in CANDIDATES:
         url = streams.build_rtsp_url(tpl, cam, rtsp_port)
-        shown = url.replace(cam.password, "***") if cam.password else url
-        ok = streams.probe_rtsp(url)
+        try:
+            ok = streams.probe_rtsp(url)
+        except FileNotFoundError as exc:
+            print(exc)
+            return
         print(f"[{'OK ' if ok else 'no '}] {tpl}")
         if ok:
             print("\n>>> Put this in config.ini under [live]:")
