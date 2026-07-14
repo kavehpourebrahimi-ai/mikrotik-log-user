@@ -24,6 +24,7 @@ CANDIDATES = [
     "rtsp://{user}:{password}@{ip}:{port}/11",
     "rtsp://{user}:{password}@{ip}:{port}/12",
     "rtsp://{user}:{password}@{ip}:{port}/1",
+    "rtsp://{user}:{password}@{ip}:{port}/onvif1",
     "rtsp://{user}:{password}@{ip}:{port}/live/main",
     "rtsp://{user}:{password}@{ip}:{port}/live/0/MAIN",
     "rtsp://{user}:{password}@{ip}:{port}/cam/realmonitor?channel={channel}&subtype=0",
@@ -50,10 +51,11 @@ def main() -> None:
         print("No enabled cameras with an IP were found in the database.")
         return
 
+    rtsp_port = cfg.getint("live", "rtsp_port", fallback=554)
     cam = cams[0]
-    print(f"Probing against camera '{cam.name}' ({cam.ip}:{cam.port}) ...\n")
+    print(f"Probing against camera '{cam.name}' ({cam.ip}:{rtsp_port}) ...\n")
     for tpl in CANDIDATES:
-        url = streams.build_rtsp_url(tpl, cam)
+        url = streams.build_rtsp_url(tpl, cam, rtsp_port)
         shown = url.replace(cam.password, "***") if cam.password else url
         ok = streams.probe_rtsp(url)
         print(f"[{'OK ' if ok else 'no '}] {tpl}")

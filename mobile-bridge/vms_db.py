@@ -1,18 +1,19 @@
 """Read the camera / device list from the VMS MySQL database.
 
 The bridge never asks the operator to re-enter camera credentials: it reads the
-camera list (and the per-device IP / port / user / password) straight from the
+camera list (and the per-device IP / user / password) straight from the
 `surveillancesystem` database that the Windows VMS server already maintains.
 
-Relevant tables (reverse engineered):
+Real schema (confirmed on a live 115-camera ONVIF install):
 
-    channel(Channel_Guid, Device_Guid, Name, ChannelType, Id)
-    device(Device_Guid, ParentGuid, Mac, ?, PrivateAddress, PublicAddress,
-           Port, ChannelCount, ..., User, Password, ...)
-    channelproperty(Channel_Guid, Hidden, Disabled, Preview, ...)
+    device(Guid PK, ServerGuid, Mac, DriverKey, DisplayName, IPAddress,
+           HttpPort, FtpPort, UserName, Password, VenderType, DeviceType,
+           DriverType, ChannelCount, Id, ...)
+    channel(Guid PK / Channel_Guid, Device_Guid -> device.Guid, Name, ...)
+    channelproperty(Channel_Guid, Hidden, Disabled, DeviceIndex, ...)
 
-Only the columns we actually need are selected, addressed by name so the code is
-resilient to unknown/extra columns.
+Note: device.HttpPort is the ONVIF/HTTP port (usually 80), NOT the RTSP port.
+The RTSP port for live streaming is configured separately (default 554).
 """
 
 from __future__ import annotations
@@ -31,7 +32,7 @@ class Camera:
     name: str
     device_guid: str
     ip: str
-    port: int
+    http_port: int      # ONVIF/HTTP port from the DB (usually 80)
     user: str
     password: str
     channel_no: int
@@ -59,23 +60,21 @@ class VmsDatabase:
         )
 
     def list_cameras(self) -> list[Camera]:
-        """Return every enabled video channel with its device connection info."""
+        """Return every video channel with its device connection info."""
 
         sql = """
-            SELECT c.Channel_Guid  AS guid,
-                   c.Name          AS name,
-                   c.Device_Guid   AS device_guid,
-                   d.PrivateAddress AS ip,
-                   d.Port          AS port,
-                   d.User          AS user,
-                   d.Password      AS password,
-                   d.DeviceIndex   AS device_index,
-                   cp.Disabled     AS disabled,
-                   cp.DeviceIndex  AS channel_no
+            SELECT c.Guid         AS guid,
+                   c.Name         AS name,
+                   c.Device_Guid  AS device_guid,
+                   d.IPAddress    AS ip,
+                   d.HttpPort     AS http_port,
+                   d.UserName     AS user,
+                   d.Password     AS password,
+                   cp.Disabled    AS disabled,
+                   cp.DeviceIndex AS channel_no
             FROM channel c
-            JOIN device d          ON c.Device_Guid = d.Device_Guid
-            LEFT JOIN channelproperty cp ON cp.Channel_Guid = c.Channel_Guid
-            WHERE c.ChannelType = '2001'   -- video channels only
+            JOIN device d ON c.Device_Guid = d.Guid
+            LEFT JOIN channelproperty cp ON cp.Channel_Guid = c.Guid
         """
         cams: list[Camera] = []
         with self._connect() as conn:
@@ -99,7 +98,7 @@ class VmsDatabase:
             name=(row.get("name") or "").strip() or row.get("guid", ""),
             device_guid=row.get("device_guid", ""),
             ip=(row.get("ip") or "").strip(),
-            port=_int(row.get("port"), 554),
+            http_port=_int(row.get("http_port"), 80),
             user=(row.get("user") or "admin").strip(),
             password=(row.get("password") or "").strip(),
             channel_no=_int(row.get("channel_no"), 0) + 1,

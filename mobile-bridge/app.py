@@ -44,6 +44,7 @@ COPY_LIVE = CFG.getboolean("live", "copy_codec", fallback=False)
 COPY_PLAYBACK = CFG.getboolean("playback", "copy_codec", fallback=False)
 RTSP_TEMPLATE = CFG.get("live", "rtsp_template",
                         fallback="rtsp://{user}:{password}@{ip}:{port}/av0_0")
+RTSP_PORT = CFG.getint("live", "rtsp_port", fallback=554)
 
 DB = VmsDatabase(
     host=CFG.get("db", "host", fallback="127.0.0.1"),
@@ -55,7 +56,7 @@ DB = VmsDatabase(
 
 WORK_DIR = os.path.join(tempfile.gettempdir(), "vms_bridge")
 LIVE = streams.LiveManager(os.path.join(WORK_DIR, "live"), RTSP_TEMPLATE,
-                           copy_codec=COPY_LIVE)
+                           copy_codec=COPY_LIVE, rtsp_port=RTSP_PORT)
 PLAYBACK_DIR = os.path.join(WORK_DIR, "playback")
 os.makedirs(PLAYBACK_DIR, exist_ok=True)
 

@@ -23,14 +23,19 @@ import time
 FFMPEG = os.environ.get("FFMPEG_BIN", "ffmpeg")
 
 
-def build_rtsp_url(template: str, cam) -> str:
-    """Render an RTSP URL template with the camera's connection info."""
+def build_rtsp_url(template: str, cam, rtsp_port: int = 554) -> str:
+    """Render an RTSP URL template with the camera's connection info.
+
+    ``rtsp_port`` is the RTSP service port (default 554); it is intentionally
+    separate from the device's HTTP/ONVIF port stored in the database.
+    """
 
     return template.format(
         user=cam.user,
         password=cam.password,
         ip=cam.ip,
-        port=cam.port or 554,
+        port=rtsp_port,
+        http_port=cam.http_port,
         channel=cam.channel_no,
         channel0=max(0, cam.channel_no - 1),
     )
@@ -40,9 +45,10 @@ class LiveManager:
     """Runs one ffmpeg RTSP->HLS worker per camera, on demand."""
 
     def __init__(self, work_dir: str, rtsp_template: str, copy_codec: bool = False,
-                 idle_timeout: int = 60):
+                 idle_timeout: int = 60, rtsp_port: int = 554):
         self.work_dir = work_dir
         self.rtsp_template = rtsp_template
+        self.rtsp_port = rtsp_port
         self.copy_codec = copy_codec
         self.idle_timeout = idle_timeout
         self._procs: dict[str, dict] = {}
@@ -74,7 +80,7 @@ class LiveManager:
                 except OSError:
                     pass
 
-            rtsp = build_rtsp_url(self.rtsp_template, cam)
+            rtsp = build_rtsp_url(self.rtsp_template, cam, self.rtsp_port)
             vcodec = ["-c:v", "copy"] if self.copy_codec else [
                 "-c:v", "libx264", "-preset", "veryfast", "-tune", "zerolatency",
                 "-pix_fmt", "yuv420p", "-g", "50",
