@@ -155,7 +155,10 @@ class LiveManager:
             if info and info["proc"].poll() is None:
                 info["last"] = time.time()
                 return self.playlist_path(guid)
+            if info:
+                self._procs.pop(guid, None)
 
+            ensure_tools()
             cam_dir = self._cam_dir(guid)
             os.makedirs(cam_dir, exist_ok=True)
             for f in os.listdir(cam_dir):
@@ -166,7 +169,6 @@ class LiveManager:
 
             rtsp = resolve_live_url(cam, self.rtsp_template, self.rtsp_port,
                                     self.use_onvif)
-            hwaccel = ["-hwaccel", "auto"] if os.name == "nt" and not self.copy_codec else []
             vf = []
             if not self.copy_codec and self.live_scale > 0:
                 vf = ["-vf", f"scale={self.live_scale}:-2"]
@@ -175,8 +177,7 @@ class LiveManager:
                 "-pix_fmt", "yuv420p", "-g", "25", "-keyint_min", "25", "-threads", "2",
             ]
             cmd = [
-                FFMPEG, "-nostdin", "-loglevel", "warning",
-                *hwaccel,
+                FFMPEG, "-nostdin", "-loglevel", "info",
                 "-rtsp_transport", "tcp",
                 "-fflags", "nobuffer", "-flags", "low_delay",
                 "-probesize", "500000", "-analyzeduration", "1000000",
@@ -190,13 +191,22 @@ class LiveManager:
                 self.playlist_path(guid),
             ]
             log_path = os.path.join(cam_dir, "ffmpeg.log")
-            with open(log_path, "w", encoding="utf-8") as logf:
-                proc = subprocess.Popen(
-                    cmd,
-                    stdout=subprocess.DEVNULL,
-                    stderr=logf,
-                )
-            self._procs[guid] = {"proc": proc, "last": time.time(), "rtsp": rtsp}
+            shown_rtsp = rtsp.replace(cam.password, "***") if cam.password else rtsp
+            try:
+                with open(log_path, "w", encoding="utf-8") as logf:
+                    logf.write("ffmpeg: " + FFMPEG + "\n")
+                    logf.write("cmd: " + " ".join(cmd[:6]) + " ... " + shown_rtsp + " ...\n\n")
+                    logf.flush()
+                    proc = subprocess.Popen(
+                        cmd,
+                        stdout=subprocess.DEVNULL,
+                        stderr=logf,
+                    )
+            except FileNotFoundError:
+                with open(log_path, "w", encoding="utf-8") as logf:
+                    logf.write("ffmpeg not found: " + FFMPEG + "\n")
+                raise
+            self._procs[guid] = {"proc": proc, "last": time.time(), "rtsp": rtsp, "cmd": cmd}
             return self.playlist_path(guid)
 
     def touch(self, guid: str) -> None:
@@ -223,6 +233,7 @@ class LiveManager:
                 log_tail = fh.read()[-1200:]
         return {
             "proc_alive": proc_alive,
+            "ffmpeg": FFMPEG,
             "playlist_exists": os.path.isfile(playlist),
             "playlist_bytes": os.path.getsize(playlist) if os.path.isfile(playlist) else 0,
             "segment_count": len(segments),

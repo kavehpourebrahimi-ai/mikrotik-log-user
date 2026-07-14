@@ -147,7 +147,10 @@ def live_playlist(guid):
         time.sleep(0.1)
     st = LIVE.status(guid)
     if not st["proc_alive"]:
-        abort(503, "ffmpeg stopped: " + (st.get("log_tail") or ""))
+        detail = st.get("log_tail") or "ffmpeg log empty"
+        if not streams.tools_status()["ffmpeg_ok"]:
+            detail = "ffmpeg not found — set [tools] ffmpeg_bin in config.ini"
+        abort(503, "ffmpeg stopped: " + detail)
     resp = Response("stream starting, retry\n", status=503, mimetype="text/plain")
     resp.headers["Retry-After"] = "3"
     return resp
@@ -165,6 +168,9 @@ def live_snapshot(guid):
         st = LIVE.status(guid)
         abort(503, "snapshot failed: " + (st.get("log_tail") or ""))
     return Response(data, mimetype="image/jpeg", max_age=0)
+
+
+@app.route("/api/live/<guid>/status")
 def live_status(guid):
     cam = find_camera(guid)
     if not cam:
@@ -232,6 +238,15 @@ def health():
 
 
 if __name__ == "__main__":
+    try:
+        streams.ensure_tools()
+        print("ffmpeg:", streams.FFMPEG)
+        print("ffprobe:", streams.FFPROBE)
+        print("rtsp_template:", RTSP_TEMPLATE)
+        print("record_root:", RECORD_ROOT)
+    except FileNotFoundError as exc:
+        print("SETUP ERROR:", exc)
+        raise SystemExit(1) from exc
     host = CFG.get("server", "host", fallback="0.0.0.0")
     port = CFG.getint("server", "port", fallback=8080)
     app.run(host=host, port=port, threaded=True)
