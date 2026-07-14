@@ -127,7 +127,7 @@ class LiveManager:
 
     def __init__(self, work_dir: str, rtsp_template: str, copy_codec: bool = False,
                  idle_timeout: int = 60, rtsp_port: int = 554, use_onvif: bool = False,
-                 live_scale: int = 1280):
+                 live_scale: int = 640):
         self.work_dir = work_dir
         self.rtsp_template = rtsp_template
         self.rtsp_port = rtsp_port
@@ -166,15 +166,17 @@ class LiveManager:
 
             rtsp = resolve_live_url(cam, self.rtsp_template, self.rtsp_port,
                                     self.use_onvif)
+            hwaccel = ["-hwaccel", "auto"] if os.name == "nt" and not self.copy_codec else []
             vf = []
             if not self.copy_codec and self.live_scale > 0:
                 vf = ["-vf", f"scale={self.live_scale}:-2"]
             vcodec = ["-c:v", "copy"] if self.copy_codec else [
                 "-c:v", "libx264", "-preset", "ultrafast", "-tune", "zerolatency",
-                "-pix_fmt", "yuv420p", "-g", "25", "-keyint_min", "25",
+                "-pix_fmt", "yuv420p", "-g", "25", "-keyint_min", "25", "-threads", "2",
             ]
             cmd = [
                 FFMPEG, "-nostdin", "-loglevel", "warning",
+                *hwaccel,
                 "-rtsp_transport", "tcp",
                 "-fflags", "nobuffer", "-flags", "low_delay",
                 "-probesize", "500000", "-analyzeduration", "1000000",
@@ -228,6 +230,27 @@ class LiveManager:
             "rtsp": info.get("rtsp", "") if info else "",
             "log_tail": log_tail,
         }
+
+    def snapshot(self, cam, timeout: int = 15) -> bytes | None:
+        """Grab a single JPEG frame from the camera RTSP stream."""
+
+        ensure_tools()
+        rtsp = resolve_live_url(cam, self.rtsp_template, self.rtsp_port, self.use_onvif)
+        cmd = [
+            FFMPEG, "-nostdin", "-loglevel", "error",
+            "-rtsp_transport", "tcp",
+            "-i", rtsp,
+            "-an", "-frames:v", "1",
+            "-f", "image2", "-q:v", "4",
+            "pipe:1",
+        ]
+        try:
+            res = subprocess.run(cmd, capture_output=True, timeout=timeout)
+        except subprocess.TimeoutExpired:
+            return None
+        if res.returncode != 0 or not res.stdout:
+            return None
+        return res.stdout
 
     def _reaper(self) -> None:
         while True:

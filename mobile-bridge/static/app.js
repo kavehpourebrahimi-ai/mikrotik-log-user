@@ -115,22 +115,48 @@ function selectTab(name) {
 }
 
 // ---- live ------------------------------------------------------------------
+async function waitForLive(url, guid, attempts = 45) {
+  for (let i = 0; i < attempts; i++) {
+    showMsg(`در حال اتصال… ${i + 1}/${attempts}`);
+    try {
+      const r = await fetch(url);
+      if (r.ok) return true;
+      if (r.status === 503) {
+        await new Promise((res) => setTimeout(res, 3000));
+        continue;
+      }
+      const err = await r.text();
+      showMsg("خطا: " + err.slice(0, 400));
+      return false;
+    } catch (e) {
+      showMsg("خطا در شبکه: " + e.message);
+      return false;
+    }
+  }
+  try {
+    const st = await api(`/api/live/${guid}/status`);
+    const hint = st.log_tail ? st.log_tail.slice(-200) : "ffmpeg log empty";
+    showMsg("استریم آماده نشد. " + hint);
+  } catch (_e) {
+    showMsg("استریم آماده نشد. config.ini و ffmpeg.log را بررسی کنید.");
+  }
+  return false;
+}
+
 async function startLive() {
   if (!currentCam) return;
-  el("livePane").innerHTML = '<p class="livehint">پخش زنده از طریق سرور… (۲۰–۴۰ ثانیه صبر کنید)</p>';
+  el("livePane").innerHTML =
+    '<p class="livehint">پخش زنده از طریق سرور… (ممکن است ۱–۲ دقیقه طول بکشد)</p>' +
+    `<img id="liveSnap" alt="" style="max-width:100%;border-radius:10px;margin-top:8px;display:none" />`;
   const url = `/live/${currentCam.guid}/index.m3u8`;
-  showMsg("در حال اتصال به دوربین…");
-  try {
-    const r = await fetch(url);
-    if (!r.ok) {
-      const err = await r.text();
-      showMsg("خطا: " + err.slice(0, 300));
-      return;
-    }
-  } catch (e) {
-    showMsg("خطا در دریافت استریم: " + e.message);
-    return;
+  const snap = el("liveSnap");
+  if (snap) {
+    snap.style.display = "block";
+    snap.src = `/api/live/${currentCam.guid}/snapshot.jpg?ts=${Date.now()}`;
+    snap.onerror = () => { snap.style.display = "none"; };
   }
+  const ok = await waitForLive(url, currentCam.guid);
+  if (!ok) return;
   playHls(url);
 }
 

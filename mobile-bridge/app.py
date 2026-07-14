@@ -47,7 +47,7 @@ RTSP_TEMPLATE = CFG.get("live", "rtsp_template",
                         fallback="rtsp://{user}:{password}@{ip}:{port}/0")
 RTSP_PORT = CFG.getint("live", "rtsp_port", fallback=554)
 USE_ONVIF = CFG.getboolean("live", "use_onvif", fallback=False)
-LIVE_SCALE = CFG.getint("live", "live_scale", fallback=1280)
+LIVE_SCALE = CFG.getint("live", "live_scale", fallback=640)
 
 streams.configure_tools(
     ffmpeg_bin=CFG.get("tools", "ffmpeg_bin", fallback=None),
@@ -137,21 +137,34 @@ def live_playlist(guid):
     if not cam:
         abort(404, "unknown camera")
     playlist = LIVE.ensure(cam)
-    # HEVC->H264 transcode can take 20-40s on first segment
-    for _ in range(400):
+    # Return quickly; the browser polls until segments exist.
+    for _ in range(50):
         if os.path.isfile(playlist) and os.path.getsize(playlist) > 0:
             st = LIVE.status(guid)
             if st["segment_count"] > 0:
-                break
+                return send_file(playlist, mimetype="application/vnd.apple.mpegurl",
+                                 max_age=0)
         time.sleep(0.1)
-    if not os.path.isfile(playlist) or os.path.getsize(playlist) == 0:
+    st = LIVE.status(guid)
+    if not st["proc_alive"]:
+        abort(503, "ffmpeg stopped: " + (st.get("log_tail") or ""))
+    resp = Response("stream starting, retry\n", status=503, mimetype="text/plain")
+    resp.headers["Retry-After"] = "3"
+    return resp
+
+
+@app.route("/api/live/<guid>/snapshot.jpg")
+def live_snapshot(guid):
+    """One JPEG frame — quick proof the RTSP path works."""
+
+    cam = find_camera(guid)
+    if not cam:
+        abort(404, "unknown camera")
+    data = LIVE.snapshot(cam)
+    if not data:
         st = LIVE.status(guid)
-        abort(503, "live stream failed: " + (st.get("log_tail") or "no ffmpeg log"))
-    return send_file(playlist, mimetype="application/vnd.apple.mpegurl",
-                     max_age=0)
-
-
-@app.route("/api/live/<guid>/status")
+        abort(503, "snapshot failed: " + (st.get("log_tail") or ""))
+    return Response(data, mimetype="image/jpeg", max_age=0)
 def live_status(guid):
     cam = find_camera(guid)
     if not cam:
