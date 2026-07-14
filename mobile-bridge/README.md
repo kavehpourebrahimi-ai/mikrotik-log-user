@@ -47,6 +47,13 @@ server (they are read from the VMS MySQL database, never re-entered).
 2. Find the correct RTSP URL for your cameras (Longse/FreeIP vary by model):
    ```
    python probe_rtsp.py
+   python probe_one.py 192.168.21.5 --verbose
+   ```
+   Export camera user/password/IP from the VMS database:
+   ```
+   python export_cameras.py
+   python export_cameras.py --ip 192.168.21.5
+   python export_cameras.py --csv cameras.csv
    ```
    Copy the printed `rtsp_template = ...` line into `config.ini` under `[live]`.
 
