@@ -23,6 +23,9 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 VERBOSE = "--verbose" in sys.argv or "-v" in sys.argv
 
 CANDIDATES = [
+    "rtsp://{user}:{password}@{ip}:{port}/0",
+    "rtsp://{user}:{password}@{ip}:{port}/1",
+    "rtsp://{user}:{password}@{ip}:{port}/2",
     "rtsp://{user}:{password}@{ip}:{port}/av0_0",
     "rtsp://{user}:{password}@{ip}:{port}/av0_1",
     "rtsp://{user}:{password}@{ip}:{port}/11",
