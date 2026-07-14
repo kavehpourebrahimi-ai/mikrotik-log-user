@@ -19,6 +19,9 @@ import shutil
 import subprocess
 import threading
 import time
+from urllib.parse import quote
+
+import onvif_rtsp
 
 FFMPEG = "ffmpeg"
 FFPROBE = "ffprobe"
@@ -94,11 +97,12 @@ def build_rtsp_url(template: str, cam, rtsp_port: int = 554) -> str:
 
     ``rtsp_port`` is the RTSP service port (default 554); it is intentionally
     separate from the device's HTTP/ONVIF port stored in the database.
+    User/password are URL-encoded because special characters break RTSP URLs.
     """
 
     return template.format(
-        user=cam.user,
-        password=cam.password,
+        user=quote(cam.user, safe=""),
+        password=quote(cam.password, safe=""),
         ip=cam.ip,
         port=rtsp_port,
         http_port=cam.http_port,
@@ -107,14 +111,26 @@ def build_rtsp_url(template: str, cam, rtsp_port: int = 554) -> str:
     )
 
 
+def resolve_live_url(cam, rtsp_template: str, rtsp_port: int = 554,
+                     use_onvif: bool = False) -> str:
+    """Pick the RTSP URL for live streaming (ONVIF discovery or template)."""
+
+    if use_onvif:
+        found = onvif_rtsp.discover_streams(cam)
+        if found:
+            return found[0].url
+    return build_rtsp_url(rtsp_template, cam, rtsp_port)
+
+
 class LiveManager:
     """Runs one ffmpeg RTSP->HLS worker per camera, on demand."""
 
     def __init__(self, work_dir: str, rtsp_template: str, copy_codec: bool = False,
-                 idle_timeout: int = 60, rtsp_port: int = 554):
+                 idle_timeout: int = 60, rtsp_port: int = 554, use_onvif: bool = False):
         self.work_dir = work_dir
         self.rtsp_template = rtsp_template
         self.rtsp_port = rtsp_port
+        self.use_onvif = use_onvif
         self.copy_codec = copy_codec
         self.idle_timeout = idle_timeout
         self._procs: dict[str, dict] = {}
@@ -146,7 +162,8 @@ class LiveManager:
                 except OSError:
                     pass
 
-            rtsp = build_rtsp_url(self.rtsp_template, cam, self.rtsp_port)
+            rtsp = resolve_live_url(cam, self.rtsp_template, self.rtsp_port,
+                                    self.use_onvif)
             vcodec = ["-c:v", "copy"] if self.copy_codec else [
                 "-c:v", "libx264", "-preset", "veryfast", "-tune", "zerolatency",
                 "-pix_fmt", "yuv420p", "-g", "50",
@@ -208,12 +225,12 @@ def vdo_to_mp4(vdo_path: str, out_path: str, copy_codec: bool = False,
     return res.returncode == 0 and os.path.isfile(out_path)
 
 
-def probe_rtsp(url: str, timeout: int = 8) -> bool:
-    """Return True if ffprobe can open the RTSP url and find a video stream."""
+def probe_rtsp(url: str, timeout: int = 8, transport: str = "tcp") -> tuple[bool, str]:
+    """Return (ok, error_text) from ffprobe for an RTSP url."""
 
     ensure_tools()
     cmd = [
-        FFPROBE, "-v", "error", "-rtsp_transport", "tcp",
+        FFPROBE, "-v", "error", "-rtsp_transport", transport,
         "-select_streams", "v:0",
         "-show_entries", "stream=codec_name",
         "-of", "default=noprint_wrappers=1:nokey=1",
@@ -221,6 +238,10 @@ def probe_rtsp(url: str, timeout: int = 8) -> bool:
     ]
     try:
         res = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
-        return res.returncode == 0 and bool(res.stdout.strip())
+        err = (res.stderr or res.stdout or "").strip()
+        ok = res.returncode == 0 and bool((res.stdout or "").strip())
+        return ok, err
     except subprocess.TimeoutExpired:
-        return False
+        return False, "timeout"
+    except FileNotFoundError as exc:
+        raise exc

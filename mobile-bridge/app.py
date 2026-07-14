@@ -23,6 +23,7 @@ from flask import (Flask, jsonify, request, send_file, send_from_directory,
                    abort, Response)
 
 import archive
+import onvif_rtsp
 import streams
 from vms_db import VmsDatabase
 
@@ -45,6 +46,7 @@ COPY_PLAYBACK = CFG.getboolean("playback", "copy_codec", fallback=False)
 RTSP_TEMPLATE = CFG.get("live", "rtsp_template",
                         fallback="rtsp://{user}:{password}@{ip}:{port}/av0_0")
 RTSP_PORT = CFG.getint("live", "rtsp_port", fallback=554)
+USE_ONVIF = CFG.getboolean("live", "use_onvif", fallback=False)
 
 streams.configure_tools(
     ffmpeg_bin=CFG.get("tools", "ffmpeg_bin", fallback=None),
@@ -61,7 +63,8 @@ DB = VmsDatabase(
 
 WORK_DIR = os.path.join(tempfile.gettempdir(), "vms_bridge")
 LIVE = streams.LiveManager(os.path.join(WORK_DIR, "live"), RTSP_TEMPLATE,
-                           copy_codec=COPY_LIVE, rtsp_port=RTSP_PORT)
+                           copy_codec=COPY_LIVE, rtsp_port=RTSP_PORT,
+                           use_onvif=USE_ONVIF)
 PLAYBACK_DIR = os.path.join(WORK_DIR, "playback")
 os.makedirs(PLAYBACK_DIR, exist_ok=True)
 
