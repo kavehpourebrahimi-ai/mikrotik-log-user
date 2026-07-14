@@ -44,7 +44,7 @@ RECORD_ROOT = CFG.get("archive", "record_root", fallback=r"E:\VMS\Record")
 COPY_LIVE = CFG.getboolean("live", "copy_codec", fallback=False)
 COPY_PLAYBACK = CFG.getboolean("playback", "copy_codec", fallback=False)
 RTSP_TEMPLATE = CFG.get("live", "rtsp_template",
-                        fallback="rtsp://{user}:{password}@{ip}:{port}/av0_0")
+                        fallback="rtsp://{user}:{password}@{ip}:{port}/0")
 RTSP_PORT = CFG.getint("live", "rtsp_port", fallback=554)
 USE_ONVIF = CFG.getboolean("live", "use_onvif", fallback=False)
 
