@@ -180,9 +180,14 @@ class LiveManager:
                 "-hls_segment_filename", os.path.join(cam_dir, "seg%d.ts"),
                 self.playlist_path(guid),
             ]
-            proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL,
-                                    stderr=subprocess.DEVNULL)
-            self._procs[guid] = {"proc": proc, "last": time.time()}
+            log_path = os.path.join(cam_dir, "ffmpeg.log")
+            with open(log_path, "w", encoding="utf-8") as logf:
+                proc = subprocess.Popen(
+                    cmd,
+                    stdout=subprocess.DEVNULL,
+                    stderr=logf,
+                )
+            self._procs[guid] = {"proc": proc, "last": time.time(), "rtsp": rtsp}
             return self.playlist_path(guid)
 
     def touch(self, guid: str) -> None:

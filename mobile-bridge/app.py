@@ -136,13 +136,18 @@ def live_playlist(guid):
     if not cam:
         abort(404, "unknown camera")
     playlist = LIVE.ensure(cam)
-    # wait briefly for the first segment to appear
-    for _ in range(50):
+    # HEVC->H264 transcode can take 10-20s on first segment
+    for _ in range(200):
         if os.path.isfile(playlist) and os.path.getsize(playlist) > 0:
             break
         time.sleep(0.1)
-    if not os.path.isfile(playlist):
-        abort(503, "live stream is starting, retry shortly")
+    if not os.path.isfile(playlist) or os.path.getsize(playlist) == 0:
+        log_path = os.path.join(WORK_DIR, "live", guid, "ffmpeg.log")
+        detail = ""
+        if os.path.isfile(log_path):
+            with open(log_path, encoding="utf-8", errors="replace") as fh:
+                detail = fh.read()[-800:]
+        abort(503, "live stream failed to start. ffmpeg log: " + detail)
     return send_file(playlist, mimetype="application/vnd.apple.mpegurl",
                      max_age=0)
 
@@ -151,9 +156,11 @@ def live_playlist(guid):
 def live_segment(guid, seg):
     LIVE.touch(guid)
     cam_dir = os.path.join(WORK_DIR, "live", guid)
-    if not os.path.isfile(os.path.join(cam_dir, seg)):
+    path = os.path.join(cam_dir, seg)
+    if not os.path.isfile(path):
         abort(404)
-    return send_from_directory(cam_dir, seg, max_age=0)
+    mime = "application/vnd.apple.mpegurl" if seg.endswith(".m3u8") else "video/mp2t"
+    return send_from_directory(cam_dir, seg, mimetype=mime, max_age=0)
 
 
 # ---- playback --------------------------------------------------------------

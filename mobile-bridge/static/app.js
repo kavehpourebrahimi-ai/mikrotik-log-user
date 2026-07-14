@@ -27,22 +27,23 @@ function showMsg(text) {
 function playHls(url) {
   const v = el("player");
   destroyPlayer();
-  showMsg("در حال بارگذاری…");
+  showMsg("در حال بارگذاری… (۱۰–۲۰ ثانیه صبر کنید)");
   const onReady = () => showMsg("");
   if (v.canPlayType("application/vnd.apple.mpegurl")) {
     v.src = url;
     v.addEventListener("loadeddata", onReady, { once: true });
+    v.addEventListener("error", () => showMsg("خطا در پخش. دکمه ⟳ را بزنید."), { once: true });
     v.play().catch(() => {});
   } else if (window.Hls && Hls.isSupported()) {
-    hls = new Hls({ lowLatencyMode: true, liveSyncDurationCount: 3 });
+    hls = new Hls({ lowLatencyMode: true, liveSyncDurationCount: 3, manifestLoadingTimeOut: 30000 });
     hls.loadSource(url);
     hls.attachMedia(v);
     hls.on(Hls.Events.MANIFEST_PARSED, () => { onReady(); v.play().catch(() => {}); });
     hls.on(Hls.Events.ERROR, (_e, d) => {
-      if (d.fatal) showMsg("خطا در پخش زنده. دوباره تلاش کنید.");
+      if (d.fatal) showMsg("خطا در پخش زنده (" + (d.type || "hls") + "). دکمه ⟳ را بزنید.");
     });
   } else {
-    showMsg("مرورگر از HLS پشتیبانی نمی‌کند.");
+    showMsg("پخش‌کننده HLS لود نشد. صفحه را رفرش کنید.");
   }
 }
 
@@ -81,8 +82,18 @@ async function loadCameras() {
   grid.innerHTML = "";
   el("gridEmpty").classList.add("hidden");
   let cams = [];
-  try { cams = await api("/api/cameras"); } catch (e) { /* ignore */ }
-  if (!cams.length) { el("gridEmpty").classList.remove("hidden"); return; }
+  try {
+    cams = await api("/api/cameras?refresh=1");
+  } catch (e) {
+    el("gridEmpty").textContent = "خطا در خواندن لیست دوربین‌ها: " + e.message;
+    el("gridEmpty").classList.remove("hidden");
+    return;
+  }
+  if (!cams.length) {
+    el("gridEmpty").textContent = "دوربینی پیدا نشد. اتصال دیتابیس را بررسی کنید.";
+    el("gridEmpty").classList.remove("hidden");
+    return;
+  }
   for (const cam of cams) {
     const card = document.createElement("div");
     card.className = "cam-card" + (cam.disabled ? " disabled" : "");
