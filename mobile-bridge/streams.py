@@ -30,16 +30,23 @@ FFMPEG = "ffmpeg"
 FFPROBE = "ffprobe"
 
 # Tried in order when the configured template returns RTSP 404.
-RTSP_PROBE_TEMPLATES = [
+RTSP_PROBE_TEMPLATES_MAIN = [
     "rtsp://{user}:{password}@{ip}:{port}/0",
-    "rtsp://{user}:{password}@{ip}:{port}/1",
     "rtsp://{user}:{password}@{ip}:{port}/11",
-    "rtsp://{user}:{password}@{ip}:{port}/12",
     "rtsp://{user}:{password}@{ip}:{port}/av0_0",
-    "rtsp://{user}:{password}@{ip}:{port}/av0_1",
     "rtsp://{user}:{password}@{ip}:{port}/onvif1",
     "rtsp://{user}:{password}@{ip}:{port}/cam/realmonitor?channel={channel}&subtype=0",
 ]
+
+RTSP_PROBE_TEMPLATES_SUB = [
+    "rtsp://{user}:{password}@{ip}:{port}/1",
+    "rtsp://{user}:{password}@{ip}:{port}/12",
+    "rtsp://{user}:{password}@{ip}:{port}/av0_1",
+    "rtsp://{user}:{password}@{ip}:{port}/onvif2",
+    "rtsp://{user}:{password}@{ip}:{port}/cam/realmonitor?channel={channel}&subtype=1",
+]
+
+RTSP_PROBE_TEMPLATES = RTSP_PROBE_TEMPLATES_MAIN + RTSP_PROBE_TEMPLATES_SUB
 
 _rtsp_cache: dict[str, str] = {}
 _cache_lock = threading.Lock()
@@ -155,38 +162,44 @@ def build_rtsp_url(template: str, cam, rtsp_port: int = 554) -> str:
 
 def resolve_live_url(cam, rtsp_template: str, rtsp_port: int = 554,
                      use_onvif: bool = False, work_dir: str | None = None,
-                     auto_probe: bool = True) -> str:
-    """Pick a working RTSP URL (ONVIF, cache, configured template, or auto-probe)."""
+                     auto_probe: bool = True, stream: str = "main",
+                     rtsp_template_sub: str | None = None) -> str:
+    """Pick a working RTSP URL (ONVIF, cache, template, or auto-probe)."""
+
+    stream = "sub" if stream == "sub" else "main"
+    tpl = rtsp_template_sub if stream == "sub" and rtsp_template_sub else rtsp_template
 
     if use_onvif:
         found = onvif_rtsp.discover_streams(cam)
         if found:
-            return found[0].url
+            idx = 1 if stream == "sub" and len(found) > 1 else 0
+            return found[idx].url
 
-    cache_key = cam.ip or cam.guid
+    cache_key = f"{cam.ip}:{stream}" if cam.ip else f"{cam.guid}:{stream}"
     with _cache_lock:
         cached_tpl = _rtsp_cache.get(cache_key)
     if cached_tpl:
         return build_rtsp_url(cached_tpl, cam, rtsp_port)
 
-    templates = [rtsp_template]
-    for tpl in RTSP_PROBE_TEMPLATES:
-        if tpl not in templates:
-            templates.append(tpl)
+    probe_list = RTSP_PROBE_TEMPLATES_SUB if stream == "sub" else RTSP_PROBE_TEMPLATES_MAIN
+    templates = [tpl]
+    for t in probe_list:
+        if t not in templates:
+            templates.append(t)
 
     if auto_probe:
         ensure_tools()
-        for tpl in templates:
-            url = build_rtsp_url(tpl, cam, rtsp_port)
+        for candidate in templates:
+            url = build_rtsp_url(candidate, cam, rtsp_port)
             ok, _err = probe_rtsp(url, timeout=5)
             if ok:
                 with _cache_lock:
-                    _rtsp_cache[cache_key] = tpl
+                    _rtsp_cache[cache_key] = candidate
                 if work_dir:
                     save_rtsp_cache(work_dir)
                 return url
 
-    return build_rtsp_url(rtsp_template, cam, rtsp_port)
+    return build_rtsp_url(tpl, cam, rtsp_port)
 
 
 class LiveManager:
@@ -194,9 +207,10 @@ class LiveManager:
 
     def __init__(self, work_dir: str, rtsp_template: str, copy_codec: bool = False,
                  idle_timeout: int = 60, rtsp_port: int = 554, use_onvif: bool = False,
-                 live_scale: int = 640):
+                 live_scale: int = 640, rtsp_template_sub: str | None = None):
         self.work_dir = work_dir
         self.rtsp_template = rtsp_template
+        self.rtsp_template_sub = rtsp_template_sub or "rtsp://{user}:{password}@{ip}:{port}/1"
         self.rtsp_port = rtsp_port
         self.use_onvif = use_onvif
         self.live_scale = live_scale
@@ -208,26 +222,31 @@ class LiveManager:
         load_rtsp_cache(work_dir)
         threading.Thread(target=self._reaper, daemon=True).start()
 
-    def _cam_dir(self, guid: str) -> str:
-        return os.path.join(self.work_dir, guid)
+    def _stream_key(self, guid: str, stream: str) -> str:
+        return f"{guid}:{stream}"
 
-    def playlist_path(self, guid: str) -> str:
-        return os.path.join(self._cam_dir(guid), "live.m3u8")
+    def _cam_dir(self, guid: str, stream: str = "main") -> str:
+        return os.path.join(self.work_dir, f"{guid}_{stream}")
 
-    def ensure(self, cam) -> str:
+    def playlist_path(self, guid: str, stream: str = "main") -> str:
+        return os.path.join(self._cam_dir(guid, stream), "live.m3u8")
+
+    def ensure(self, cam, stream: str = "main") -> str:
         """Start (or reuse) a live HLS worker; return the playlist file path."""
 
+        stream = "sub" if stream == "sub" else "main"
         guid = cam.guid
+        proc_key = self._stream_key(guid, stream)
         with self._lock:
-            info = self._procs.get(guid)
+            info = self._procs.get(proc_key)
             if info and info["proc"].poll() is None:
                 info["last"] = time.time()
-                return self.playlist_path(guid)
+                return self.playlist_path(guid, stream)
             if info:
-                self._procs.pop(guid, None)
+                self._procs.pop(proc_key, None)
 
             ensure_tools()
-            cam_dir = self._cam_dir(guid)
+            cam_dir = self._cam_dir(guid, stream)
             os.makedirs(cam_dir, exist_ok=True)
             for f in os.listdir(cam_dir):
                 try:
@@ -235,8 +254,11 @@ class LiveManager:
                 except OSError:
                     pass
 
-            rtsp = resolve_live_url(cam, self.rtsp_template, self.rtsp_port,
-                                    self.use_onvif, work_dir=self.work_dir)
+            rtsp = resolve_live_url(
+                cam, self.rtsp_template, self.rtsp_port, self.use_onvif,
+                work_dir=self.work_dir, stream=stream,
+                rtsp_template_sub=self.rtsp_template_sub,
+            )
             vf = []
             if not self.copy_codec and self.live_scale > 0:
                 vf = ["-vf", f"scale={self.live_scale}:-2"]
@@ -256,12 +278,13 @@ class LiveManager:
                 "-hls_list_size", "6",
                 "-hls_flags", "delete_segments+append_list+omit_endlist+independent_segments",
                 "-hls_segment_filename", os.path.join(cam_dir, "seg%d.ts"),
-                self.playlist_path(guid),
+                self.playlist_path(guid, stream),
             ]
             log_path = os.path.join(cam_dir, "ffmpeg.log")
             shown_rtsp = rtsp.replace(cam.password, "***") if cam.password else rtsp
             try:
                 with open(log_path, "w", encoding="utf-8") as logf:
+                    logf.write(f"stream: {stream}\n")
                     logf.write("ffmpeg: " + FFMPEG + "\n")
                     logf.write("cmd: " + " ".join(cmd[:6]) + " ... " + shown_rtsp + " ...\n\n")
                     logf.flush()
@@ -274,20 +297,25 @@ class LiveManager:
                 with open(log_path, "w", encoding="utf-8") as logf:
                     logf.write("ffmpeg not found: " + FFMPEG + "\n")
                 raise
-            self._procs[guid] = {"proc": proc, "last": time.time(), "rtsp": rtsp, "cmd": cmd}
-            return self.playlist_path(guid)
+            self._procs[proc_key] = {
+                "proc": proc, "last": time.time(), "rtsp": rtsp,
+                "stream": stream, "guid": guid,
+            }
+            return self.playlist_path(guid, stream)
 
-    def touch(self, guid: str) -> None:
+    def touch(self, guid: str, stream: str = "main") -> None:
+        proc_key = self._stream_key(guid, stream)
         with self._lock:
-            if guid in self._procs:
-                self._procs[guid]["last"] = time.time()
+            if proc_key in self._procs:
+                self._procs[proc_key]["last"] = time.time()
 
-    def status(self, guid: str) -> dict:
-        cam_dir = self._cam_dir(guid)
-        playlist = self.playlist_path(guid)
+    def status(self, guid: str, stream: str = "main") -> dict:
+        cam_dir = self._cam_dir(guid, stream)
+        playlist = self.playlist_path(guid, stream)
         log_path = os.path.join(cam_dir, "ffmpeg.log")
+        proc_key = self._stream_key(guid, stream)
         with self._lock:
-            info = self._procs.get(guid)
+            info = self._procs.get(proc_key)
         proc_alive = bool(info and info["proc"].poll() is None)
         segments = []
         if os.path.isdir(cam_dir):
@@ -307,15 +335,19 @@ class LiveManager:
             "segment_count": len(segments),
             "segments": segments[-4:],
             "rtsp": info.get("rtsp", "") if info else "",
+            "stream": stream,
             "log_tail": log_tail,
         }
 
-    def snapshot(self, cam, timeout: int = 15) -> bytes | None:
+    def snapshot(self, cam, stream: str = "sub", timeout: int = 15) -> bytes | None:
         """Grab a single JPEG frame from the camera RTSP stream."""
 
         ensure_tools()
-        rtsp = resolve_live_url(cam, self.rtsp_template, self.rtsp_port, self.use_onvif,
-                                work_dir=self.work_dir)
+        rtsp = resolve_live_url(
+            cam, self.rtsp_template, self.rtsp_port, self.use_onvif,
+            work_dir=self.work_dir, stream=stream,
+            rtsp_template_sub=self.rtsp_template_sub,
+        )
         cmd = [
             FFMPEG, "-nostdin", "-loglevel", "error",
             "-rtsp_transport", "tcp",
@@ -337,7 +369,7 @@ class LiveManager:
             time.sleep(10)
             now = time.time()
             with self._lock:
-                for guid, info in list(self._procs.items()):
+                for proc_key, info in list(self._procs.items()):
                     dead = info["proc"].poll() is not None
                     idle = now - info["last"] > self.idle_timeout
                     if dead or idle:
@@ -345,7 +377,7 @@ class LiveManager:
                             info["proc"].terminate()
                         except OSError:
                             pass
-                        self._procs.pop(guid, None)
+                        self._procs.pop(proc_key, None)
 
 
 def vdo_to_mp4(vdo_path: str, out_path: str, copy_codec: bool = False,

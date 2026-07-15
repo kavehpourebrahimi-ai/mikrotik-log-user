@@ -1,15 +1,4 @@
-"""VMS Mobile Bridge - a small Flask service that runs on the Windows VMS server.
-
-It exposes a mobile-friendly web app plus a JSON API so that a phone (on the
-same LAN / VPN as the server, or via a port-forward to the server only) can:
-
-  * list every camera that is configured in the VMS
-  * watch each camera live       (RTSP pulled by the server -> HLS)
-  * browse and play recordings   (.vdo archive on the server -> MP4/HLS)
-
-The phone only ever talks to this server; camera IPs and credentials never
-leave the server.
-"""
+"""VMS Mobile Bridge - a small Flask service that runs on the Windows VMS server."""
 
 from __future__ import annotations
 
@@ -23,7 +12,6 @@ from flask import (Flask, jsonify, request, send_file, send_from_directory,
                    abort, Response)
 
 import archive
-import onvif_rtsp
 import streams
 from vms_db import VmsDatabase
 
@@ -45,9 +33,12 @@ COPY_LIVE = CFG.getboolean("live", "copy_codec", fallback=True)
 COPY_PLAYBACK = CFG.getboolean("playback", "copy_codec", fallback=True)
 RTSP_TEMPLATE = CFG.get("live", "rtsp_template",
                         fallback="rtsp://{user}:{password}@{ip}:{port}/0")
+RTSP_TEMPLATE_SUB = CFG.get("live", "rtsp_template_sub",
+                            fallback="rtsp://{user}:{password}@{ip}:{port}/1")
 RTSP_PORT = CFG.getint("live", "rtsp_port", fallback=554)
-USE_ONVIF = CFG.getboolean("live", "use_onvif", fallback=False)
+USE_ONVIF = CFG.getboolean("live", "use_onvif", fallback=True)
 LIVE_SCALE = CFG.getint("live", "live_scale", fallback=640)
+GRID_STREAM = CFG.get("live", "grid_stream", fallback="sub")
 
 streams.configure_tools(
     ffmpeg_bin=CFG.get("tools", "ffmpeg_bin", fallback=None),
@@ -63,15 +54,17 @@ DB = VmsDatabase(
 )
 
 WORK_DIR = os.path.join(tempfile.gettempdir(), "vms_bridge")
-LIVE = streams.LiveManager(os.path.join(WORK_DIR, "live"), RTSP_TEMPLATE,
-                           copy_codec=COPY_LIVE, rtsp_port=RTSP_PORT,
-                           use_onvif=USE_ONVIF, live_scale=LIVE_SCALE)
+LIVE = streams.LiveManager(
+    os.path.join(WORK_DIR, "live"), RTSP_TEMPLATE,
+    copy_codec=COPY_LIVE, rtsp_port=RTSP_PORT,
+    use_onvif=USE_ONVIF, live_scale=LIVE_SCALE,
+    rtsp_template_sub=RTSP_TEMPLATE_SUB,
+)
 PLAYBACK_DIR = os.path.join(WORK_DIR, "playback")
 os.makedirs(PLAYBACK_DIR, exist_ok=True)
 
 app = Flask(__name__, static_folder=None)
 
-# ---- simple in-memory camera cache (refreshed every 30s) -------------------
 _cam_cache: dict = {"ts": 0, "cams": []}
 _cam_lock = threading.Lock()
 
@@ -82,7 +75,7 @@ def get_cameras(force: bool = False):
             try:
                 _cam_cache["cams"] = DB.list_cameras()
                 _cam_cache["ts"] = time.time()
-            except Exception as exc:  # keep serving the last good list
+            except Exception as exc:
                 app.logger.warning("camera list refresh failed: %s", exc)
         return _cam_cache["cams"]
 
@@ -94,7 +87,10 @@ def find_camera(guid: str):
     return None
 
 
-# ---- static web app --------------------------------------------------------
+def _norm_stream(stream: str | None) -> str:
+    return "sub" if stream == "sub" else "main"
+
+
 @app.route("/")
 def index():
     return send_from_directory(os.path.join(BASE_DIR, "static"), "index.html")
@@ -105,13 +101,21 @@ def static_files(path):
     return send_from_directory(os.path.join(BASE_DIR, "static"), path)
 
 
-# ---- API -------------------------------------------------------------------
+@app.route("/api/config")
+def api_config():
+    return jsonify({
+        "grid_stream": GRID_STREAM,
+        "use_onvif": USE_ONVIF,
+        "copy_codec": COPY_LIVE,
+    })
+
+
 @app.route("/api/cameras")
 def api_cameras():
     cams = get_cameras(force=request.args.get("refresh") == "1")
     return jsonify([
         {"guid": c.guid, "name": c.name, "disabled": c.disabled}
-        for c in cams
+        for c in cams if not c.disabled
     ])
 
 
@@ -130,44 +134,77 @@ def api_segments(guid):
     return jsonify([s.to_dict() for s in segs])
 
 
-# ---- live ------------------------------------------------------------------
-@app.route("/live/<guid>/index.m3u8")
-def live_playlist(guid):
+@app.route("/api/cameras/<guid>/play_at")
+def api_play_at(guid):
+    """Find recording at an exact date/time and return the playback URL."""
+
+    when = request.args.get("datetime") or request.args.get("when")
+    if not when:
+        abort(400, "datetime=YYYY-MM-DDTHH:MM required")
+    try:
+        seg, date, epoch = archive.find_segment_for_datetime(RECORD_ROOT, guid, when)
+    except ValueError as exc:
+        abort(400, str(exc))
+    if not seg:
+        abort(404, "no recording at that time")
+    return jsonify({
+        "date": date,
+        "epoch": epoch,
+        "segment_begin": seg.begin,
+        "segment_end": seg.end,
+        "begin_iso": seg.to_dict()["begin_iso"],
+        "end_iso": seg.to_dict()["end_iso"],
+        "url": f"/playback/{guid}/segment?date={date}&t={seg.begin}",
+    })
+
+
+def _live_playlist_impl(guid: str, stream: str):
     cam = find_camera(guid)
     if not cam:
         abort(404, "unknown camera")
-    playlist = LIVE.ensure(cam)
-    # Return quickly; the browser polls until segments exist.
+    stream = _norm_stream(stream)
+    playlist = LIVE.ensure(cam, stream)
     for _ in range(50):
         if os.path.isfile(playlist) and os.path.getsize(playlist) > 0:
-            st = LIVE.status(guid)
+            st = LIVE.status(guid, stream)
             if st["segment_count"] > 0:
                 return send_file(playlist, mimetype="application/vnd.apple.mpegurl",
                                  max_age=0)
         time.sleep(0.1)
-    st = LIVE.status(guid)
+    st = LIVE.status(guid, stream)
     if not st["proc_alive"]:
         detail = st.get("log_tail") or "ffmpeg log empty"
         if "404" in detail or "Stream Not Found" in detail:
-            detail += " — مسیر RTSP اشتباه است. python probe_one.py <IP> را بزنید."
+            detail += " — مسیر RTSP اشتباه. probe_one.py را بزنید."
         if not streams.tools_status()["ffmpeg_ok"]:
-            detail = "ffmpeg not found — set [tools] ffmpeg_bin in config.ini"
+            detail = "ffmpeg not found — [tools] ffmpeg_bin in config.ini"
         return Response(detail, status=503, mimetype="text/plain; charset=utf-8")
     resp = Response("stream starting, retry\n", status=503, mimetype="text/plain")
     resp.headers["Retry-After"] = "3"
     return resp
 
 
+@app.route("/live/<guid>/index.m3u8")
+def live_playlist_main(guid):
+    return _live_playlist_impl(guid, "main")
+
+
+@app.route("/live/<guid>/<stream>/index.m3u8")
+def live_playlist_stream(guid, stream):
+    if stream.endswith(".m3u8"):
+        abort(404)
+    return _live_playlist_impl(guid, stream)
+
+
 @app.route("/api/live/<guid>/snapshot.jpg")
 def live_snapshot(guid):
-    """One JPEG frame — quick proof the RTSP path works."""
-
     cam = find_camera(guid)
     if not cam:
         abort(404, "unknown camera")
-    data = LIVE.snapshot(cam)
+    stream = _norm_stream(request.args.get("stream", GRID_STREAM))
+    data = LIVE.snapshot(cam, stream=stream)
     if not data:
-        st = LIVE.status(guid)
+        st = LIVE.status(guid, stream)
         abort(503, "snapshot failed: " + (st.get("log_tail") or ""))
     return Response(data, mimetype="image/jpeg", max_age=0)
 
@@ -177,18 +214,28 @@ def live_status(guid):
     cam = find_camera(guid)
     if not cam:
         abort(404, "unknown camera")
-    LIVE.ensure(cam)
-    st = LIVE.status(guid)
+    stream = _norm_stream(request.args.get("stream", "main"))
+    LIVE.ensure(cam, stream)
+    st = LIVE.status(guid, stream)
     st["camera"] = cam.name
     if st.get("rtsp") and cam.password:
         st["rtsp"] = st["rtsp"].replace(cam.password, "***")
     return jsonify(st)
 
 
-@app.route("/live/<guid>/<seg>")
-def live_segment(guid, seg):
-    LIVE.touch(guid)
-    cam_dir = os.path.join(WORK_DIR, "live", guid)
+@app.route("/live/<guid>/<path:rest>")
+def live_segment(guid, rest):
+    """Serve HLS segments for main or sub stream."""
+
+    stream = "main"
+    seg = rest
+    if "/" in rest:
+        stream, seg = rest.split("/", 1)
+        stream = _norm_stream(stream)
+    elif rest in ("main", "sub"):
+        abort(404)
+    LIVE.touch(guid, stream)
+    cam_dir = os.path.join(WORK_DIR, "live", f"{guid}_{stream}")
     path = os.path.join(cam_dir, seg)
     if not os.path.isfile(path):
         abort(404)
@@ -196,11 +243,8 @@ def live_segment(guid, seg):
     return send_from_directory(cam_dir, seg, mimetype=mime, max_age=0)
 
 
-# ---- playback --------------------------------------------------------------
 @app.route("/playback/<guid>/segment")
 def playback_segment(guid):
-    """Convert one archive segment (identified by its begin epoch) to MP4."""
-
     date = request.args.get("date")
     epoch = request.args.get("t", type=int)
     if not date or epoch is None:
@@ -218,8 +262,7 @@ def playback_segment(guid):
         ok = streams.vdo_to_mp4(seg.vdo_path, out_path, copy_codec=COPY_PLAYBACK)
         if not ok:
             abort(500, "ffmpeg failed to convert the segment")
-    return send_file(out_path, mimetype="video/mp4", conditional=True,
-                     max_age=3600)
+    return send_file(out_path, mimetype="video/mp4", conditional=True, max_age=3600)
 
 
 @app.route("/api/health")
@@ -235,6 +278,7 @@ def health():
         "camera_count": len(cams),
         "record_root": RECORD_ROOT,
         "record_root_exists": os.path.isdir(RECORD_ROOT),
+        "use_onvif": USE_ONVIF,
         **streams.tools_status(),
     })
 
@@ -243,8 +287,9 @@ if __name__ == "__main__":
     try:
         streams.ensure_tools()
         print("ffmpeg:", streams.FFMPEG)
-        print("ffprobe:", streams.FFPROBE)
-        print("rtsp_template:", RTSP_TEMPLATE)
+        print("use_onvif:", USE_ONVIF)
+        print("rtsp main:", RTSP_TEMPLATE)
+        print("rtsp sub:", RTSP_TEMPLATE_SUB)
         print("record_root:", RECORD_ROOT)
     except FileNotFoundError as exc:
         print("SETUP ERROR:", exc)

@@ -6,8 +6,14 @@ const api = (path) => fetch(path).then((r) => {
   return r.json();
 });
 
+let cameras = [];
 let currentCam = null;
 let hls = null;
+let liveStream = "main";
+let gridMode = "list";
+let gridStream = "sub";
+let multiTimer = null;
+let appConfig = { grid_stream: "sub" };
 
 // ---- video helpers ---------------------------------------------------------
 function destroyPlayer() {
@@ -24,6 +30,10 @@ function showMsg(text) {
   m.classList.remove("hidden");
 }
 
+function plainError(text) {
+  return text.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+}
+
 function playHls(url) {
   const v = el("player");
   destroyPlayer();
@@ -32,7 +42,7 @@ function playHls(url) {
   if (v.canPlayType("application/vnd.apple.mpegurl")) {
     v.src = url;
     v.addEventListener("loadeddata", onReady, { once: true });
-    v.addEventListener("error", () => showMsg("خطا در پخش. دکمه ⟳ را بزنید."), { once: true });
+    v.addEventListener("error", () => showMsg("خطا در پخش."), { once: true });
     v.play().catch(() => {});
   } else if (window.Hls && Hls.isSupported()) {
     hls = new Hls({ lowLatencyMode: true, liveSyncDurationCount: 3, manifestLoadingTimeOut: 30000 });
@@ -40,63 +50,93 @@ function playHls(url) {
     hls.attachMedia(v);
     hls.on(Hls.Events.MANIFEST_PARSED, () => { onReady(); v.play().catch(() => {}); });
     hls.on(Hls.Events.ERROR, (_e, d) => {
-      if (d.fatal) showMsg("خطا در پخش زنده (" + (d.type || "hls") + "). دکمه ⟳ را بزنید.");
+      if (d.fatal) showMsg("خطا در پخش زنده (" + (d.type || "hls") + ")");
     });
   } else {
-    showMsg("پخش‌کننده HLS لود نشد. صفحه را رفرش کنید.");
+    showMsg("پخش‌کننده HLS لود نشد.");
   }
 }
 
 function playMp4(url) {
   const v = el("player");
   destroyPlayer();
-  showMsg("در حال آماده‌سازی ویدیو…");
+  showMsg("در حال آماده‌سازی…");
   v.src = url;
   v.addEventListener("loadeddata", () => showMsg(""), { once: true });
-  v.addEventListener("error", () => showMsg("پخش این بخش ممکن نشد."), { once: true });
+  v.addEventListener("error", () => showMsg("پخش ممکن نشد."), { once: true });
   v.play().catch(() => {});
 }
 
+function liveUrl(guid, stream) {
+  return stream === "main"
+    ? `/live/${guid}/index.m3u8`
+    : `/live/${guid}/${stream}/index.m3u8`;
+}
+
 // ---- views -----------------------------------------------------------------
+function stopMultiRefresh() {
+  if (multiTimer) { clearInterval(multiTimer); multiTimer = null; }
+}
+
+function setGridMode(mode) {
+  gridMode = mode;
+  el("listViewBtn").classList.toggle("active", mode === "list");
+  el("multiViewBtn").classList.toggle("active", mode === "multi");
+  el("cameraGrid").parentElement.classList.toggle("hidden", mode !== "list");
+  el("multiView").classList.toggle("hidden", mode !== "multi");
+  if (mode === "multi") startMultiGrid();
+  else stopMultiRefresh();
+}
+
 function showGrid() {
   currentCam = null;
   destroyPlayer();
   el("camView").classList.add("hidden");
   el("gridView").classList.remove("hidden");
+  el("multiView").classList.toggle("hidden", gridMode !== "multi");
+  el("viewToggle").classList.remove("hidden");
   el("backBtn").classList.add("hidden");
   el("title").textContent = "دوربین‌ها";
+  if (gridMode === "multi") startMultiGrid();
 }
 
 function openCamera(cam) {
   currentCam = cam;
+  stopMultiRefresh();
   el("gridView").classList.add("hidden");
+  el("multiView").classList.add("hidden");
+  el("viewToggle").classList.add("hidden");
   el("camView").classList.remove("hidden");
   el("backBtn").classList.remove("hidden");
   el("title").textContent = cam.name;
   selectTab("live");
 }
 
-// ---- camera grid -----------------------------------------------------------
+// ---- camera list -----------------------------------------------------------
 async function loadCameras() {
+  el("gridEmpty").classList.add("hidden");
+  try {
+    cameras = await api("/api/cameras?refresh=1");
+  } catch (e) {
+    el("gridEmpty").textContent = "خطا: " + e.message;
+    el("gridEmpty").classList.remove("hidden");
+    return;
+  }
+  if (!cameras.length) {
+    el("gridEmpty").textContent = "دوربینی پیدا نشد.";
+    el("gridEmpty").classList.remove("hidden");
+    return;
+  }
+  renderListGrid();
+  if (gridMode === "multi") renderMultiGrid();
+}
+
+function renderListGrid() {
   const grid = el("cameraGrid");
   grid.innerHTML = "";
-  el("gridEmpty").classList.add("hidden");
-  let cams = [];
-  try {
-    cams = await api("/api/cameras?refresh=1");
-  } catch (e) {
-    el("gridEmpty").textContent = "خطا در خواندن لیست دوربین‌ها: " + e.message;
-    el("gridEmpty").classList.remove("hidden");
-    return;
-  }
-  if (!cams.length) {
-    el("gridEmpty").textContent = "دوربینی پیدا نشد. اتصال دیتابیس را بررسی کنید.";
-    el("gridEmpty").classList.remove("hidden");
-    return;
-  }
-  for (const cam of cams) {
+  for (const cam of cameras) {
     const card = document.createElement("div");
-    card.className = "cam-card" + (cam.disabled ? " disabled" : "");
+    card.className = "cam-card";
     card.innerHTML = `<div class="icon">📷</div><div class="name"></div>`;
     card.querySelector(".name").textContent = cam.name;
     card.addEventListener("click", () => openCamera(cam));
@@ -104,7 +144,41 @@ async function loadCameras() {
   }
 }
 
-// ---- tabs ------------------------------------------------------------------
+function renderMultiGrid() {
+  const grid = el("multiGrid");
+  grid.innerHTML = "";
+  for (const cam of cameras) {
+    const card = document.createElement("div");
+    card.className = "multi-card";
+    const img = document.createElement("img");
+    img.alt = cam.name;
+    img.dataset.guid = cam.guid;
+    img.src = `/api/live/${cam.guid}/snapshot.jpg?stream=${gridStream}&ts=${Date.now()}`;
+    img.onerror = () => { img.style.opacity = "0.3"; };
+    const name = document.createElement("div");
+    name.className = "name";
+    name.textContent = cam.name;
+    card.appendChild(img);
+    card.appendChild(name);
+    card.addEventListener("click", () => openCamera(cam));
+    grid.appendChild(card);
+  }
+}
+
+function refreshMultiSnapshots() {
+  document.querySelectorAll("#multiGrid img").forEach((img) => {
+    img.src = `/api/live/${img.dataset.guid}/snapshot.jpg?stream=${gridStream}&ts=${Date.now()}`;
+  });
+}
+
+function startMultiGrid() {
+  if (!cameras.length) return;
+  renderMultiGrid();
+  stopMultiRefresh();
+  multiTimer = setInterval(refreshMultiSnapshots, 4000);
+}
+
+// ---- tabs / live -----------------------------------------------------------
 function selectTab(name) {
   document.querySelectorAll(".tab").forEach((t) =>
     t.classList.toggle("active", t.dataset.tab === name));
@@ -114,9 +188,11 @@ function selectTab(name) {
   else { destroyPlayer(); loadDays(); }
 }
 
-// ---- live ------------------------------------------------------------------
-function plainError(text) {
-  return text.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+function setLiveStream(stream) {
+  liveStream = stream;
+  el("btnMain").classList.toggle("active", stream === "main");
+  el("btnSub").classList.toggle("active", stream === "sub");
+  if (currentCam && !el("livePane").classList.contains("hidden")) startLive();
 }
 
 async function waitForLive(url, guid, attempts = 45) {
@@ -129,36 +205,20 @@ async function waitForLive(url, guid, attempts = 45) {
         await new Promise((res) => setTimeout(res, 3000));
         continue;
       }
-      const err = plainError(await r.text());
-      showMsg("خطا: " + err.slice(0, 500));
+      showMsg("خطا: " + plainError(await r.text()).slice(0, 500));
       return false;
     } catch (e) {
-      showMsg("خطا در شبکه: " + e.message);
+      showMsg("خطا: " + e.message);
       return false;
     }
   }
-  try {
-    const st = await api(`/api/live/${guid}/status`);
-    const hint = st.log_tail ? st.log_tail.slice(-200) : "ffmpeg log empty";
-    showMsg("استریم آماده نشد. " + hint);
-  } catch (_e) {
-    showMsg("استریم آماده نشد. config.ini و ffmpeg.log را بررسی کنید.");
-  }
+  showMsg("استریم آماده نشد.");
   return false;
 }
 
 async function startLive() {
   if (!currentCam) return;
-    el("livePane").innerHTML =
-    '<p class="livehint">پخش زنده — سرور فقط پروکسی می‌کند، پخش در موبایل</p>' +
-    `<img id="liveSnap" alt="" style="max-width:100%;border-radius:10px;margin-top:8px;display:none" />`;
-  const url = `/live/${currentCam.guid}/index.m3u8`;
-  const snap = el("liveSnap");
-  if (snap) {
-    snap.style.display = "block";
-    snap.src = `/api/live/${currentCam.guid}/snapshot.jpg?ts=${Date.now()}`;
-    snap.onerror = () => { snap.style.display = "none"; };
-  }
+  const url = liveUrl(currentCam.guid, liveStream);
   const ok = await waitForLive(url, currentCam.guid);
   if (!ok) return;
   playHls(url);
@@ -175,18 +235,20 @@ async function loadDays() {
     el("segEmpty").classList.remove("hidden");
     return;
   }
-  days.reverse(); // newest first
+  days.reverse();
   for (const d of days) {
     const opt = document.createElement("option");
     opt.value = d; opt.textContent = d;
     sel.appendChild(opt);
   }
+  const now = new Date();
+  const local = new Date(now.getTime() - now.getTimezoneOffset() * 60000);
+  el("timePick").value = local.toISOString().slice(0, 16);
   loadSegments();
 }
 
 function fmtTime(iso) {
-  const d = new Date(iso);
-  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
 async function loadSegments() {
@@ -196,18 +258,15 @@ async function loadSegments() {
   el("segEmpty").classList.add("hidden");
   if (!date) return;
   let segs = [];
-  try {
-    segs = await api(`/api/cameras/${currentCam.guid}/segments?date=${date}`);
-  } catch (e) {}
+  try { segs = await api(`/api/cameras/${currentCam.guid}/segments?date=${date}`); } catch (e) {}
   if (!segs.length) { el("segEmpty").classList.remove("hidden"); return; }
   for (const s of segs) {
     const item = document.createElement("div");
     item.className = "seg-item";
-    const mins = Math.round(s.duration / 60);
     item.innerHTML = `<span class="time"></span><span class="dur"></span>`;
     item.querySelector(".time").textContent =
       `${fmtTime(s.begin_iso)} — ${fmtTime(s.end_iso)}`;
-    item.querySelector(".dur").textContent = `${mins} دقیقه`;
+    item.querySelector(".dur").textContent = `${Math.round(s.duration / 60)} دقیقه`;
     item.addEventListener("click", () => {
       playMp4(`/playback/${currentCam.guid}/segment?date=${date}&t=${s.begin}`);
     });
@@ -215,14 +274,43 @@ async function loadSegments() {
   }
 }
 
+async function playAtTime() {
+  if (!currentCam) return;
+  const when = el("timePick").value;
+  if (!when) return;
+  showMsg("در حال پیدا کردن ضبط…");
+  try {
+    const info = await api(`/api/cameras/${currentCam.guid}/play_at?datetime=${encodeURIComponent(when)}`);
+    el("daySelect").value = info.date;
+    playMp4(info.url);
+  } catch (e) {
+    showMsg("ضبطی برای این زمان نیست.");
+  }
+}
+
 // ---- wire up ---------------------------------------------------------------
 el("backBtn").addEventListener("click", showGrid);
 el("refreshBtn").addEventListener("click", () => {
-  if (currentCam) { if (el("livePane").classList.contains("hidden")) loadDays(); else startLive(); }
-  else loadCameras();
+  if (currentCam) {
+    if (el("playbackPane").classList.contains("hidden")) startLive();
+    else loadDays();
+  } else {
+    loadCameras();
+  }
 });
 document.querySelectorAll(".tab").forEach((t) =>
   t.addEventListener("click", () => selectTab(t.dataset.tab)));
 el("daySelect").addEventListener("change", loadSegments);
+el("playAtBtn").addEventListener("click", playAtTime);
+el("btnMain").addEventListener("click", () => setLiveStream("main"));
+el("btnSub").addEventListener("click", () => setLiveStream("sub"));
+el("listViewBtn").addEventListener("click", () => setGridMode("list"));
+el("multiViewBtn").addEventListener("click", () => setGridMode("multi"));
 
-loadCameras();
+(async () => {
+  try {
+    appConfig = await api("/api/config");
+    gridStream = appConfig.grid_stream || "sub";
+  } catch (_e) { /* ignore */ }
+  await loadCameras();
+})();
