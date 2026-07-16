@@ -94,7 +94,24 @@ def main() -> int:
     else:
         print(f"[WARN] archive path not found: {record_root}")
 
-    print("\nAll good — run: python probe_rtsp.py")
+    try:
+        import onvif  # noqa: F401
+        print("[ OK ] onvif-zeep installed")
+    except ImportError:
+        print("[FAIL] onvif-zeep — run: pip install onvif-zeep")
+        return 1
+
+    use_onvif = cfg.getboolean("live", "use_onvif", fallback=True)
+    if use_onvif and enabled:
+        c = enabled[0]
+        import onvif_rtsp
+        r = onvif_rtsp.discover_streams_verbose(c)
+        if r.streams:
+            print(f"[ OK ] ONVIF: {len(r.streams)} stream(s) on port {r.port} for {c.ip}")
+        else:
+            print(f"[WARN] ONVIF failed for sample camera: {r.error}")
+
+    print("\nAll good — run: start.bat")
     return 0
 
 

@@ -12,6 +12,7 @@ from flask import (Flask, jsonify, request, send_file, send_from_directory,
                    abort, Response)
 
 import archive
+import onvif_rtsp
 import streams
 from vms_db import VmsDatabase
 
@@ -150,11 +151,33 @@ def api_play_at(guid):
     return jsonify({
         "date": date,
         "epoch": epoch,
+        "requested": when,
         "segment_begin": seg.begin,
         "segment_end": seg.end,
         "begin_iso": seg.to_dict()["begin_iso"],
         "end_iso": seg.to_dict()["end_iso"],
         "url": f"/playback/{guid}/segment?date={date}&t={seg.begin}",
+        "nearest": seg.begin != epoch,
+    })
+
+
+@app.route("/api/cameras/<guid>/onvif")
+def api_onvif(guid):
+    """Test ONVIF stream discovery for one camera."""
+
+    cam = find_camera(guid)
+    if not cam:
+        abort(404, "unknown camera")
+    result = onvif_rtsp.discover_streams_verbose(cam)
+    streams_out = [
+        {"label": s.label, "url": s.url.replace(cam.password, "***") if cam.password else s.url}
+        for s in result.streams
+    ]
+    return jsonify({
+        "ok": bool(result.streams),
+        "port": result.port,
+        "error": result.error,
+        "streams": streams_out,
     })
 
 
@@ -164,7 +187,7 @@ def _live_playlist_impl(guid: str, stream: str):
         abort(404, "unknown camera")
     stream = _norm_stream(stream)
     playlist = LIVE.ensure(cam, stream)
-    for _ in range(50):
+    for _ in range(100):
         if os.path.isfile(playlist) and os.path.getsize(playlist) > 0:
             st = LIVE.status(guid, stream)
             if st["segment_count"] > 0:

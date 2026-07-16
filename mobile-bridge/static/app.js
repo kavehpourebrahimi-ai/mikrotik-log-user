@@ -282,9 +282,10 @@ async function playAtTime() {
   try {
     const info = await api(`/api/cameras/${currentCam.guid}/play_at?datetime=${encodeURIComponent(when)}`);
     el("daySelect").value = info.date;
+    if (info.nearest) showMsg("نزدیک‌ترین بازه پیدا شد — در حال پخش…");
     playMp4(info.url);
   } catch (e) {
-    showMsg("ضبطی برای این زمان نیست.");
+    showMsg("ضبطی برای این زمان نیست — از لیست بازه‌ها انتخاب کنید.");
   }
 }
 

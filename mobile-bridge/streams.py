@@ -164,22 +164,29 @@ def resolve_live_url(cam, rtsp_template: str, rtsp_port: int = 554,
                      use_onvif: bool = False, work_dir: str | None = None,
                      auto_probe: bool = True, stream: str = "main",
                      rtsp_template_sub: str | None = None) -> str:
-    """Pick a working RTSP URL (ONVIF, cache, template, or auto-probe)."""
+    """Pick a working RTSP URL (ONVIF first, cache, template, or auto-probe)."""
 
     stream = "sub" if stream == "sub" else "main"
     tpl = rtsp_template_sub if stream == "sub" and rtsp_template_sub else rtsp_template
+    cache_key = f"{cam.ip}:{stream}" if cam.ip else f"{cam.guid}:{stream}"
+
+    with _cache_lock:
+        cached = _rtsp_cache.get(cache_key)
+    if cached:
+        if cached.startswith("url:"):
+            return cached[4:]
+        return build_rtsp_url(cached, cam, rtsp_port)
 
     if use_onvif:
         found = onvif_rtsp.discover_streams(cam)
         if found:
             idx = 1 if stream == "sub" and len(found) > 1 else 0
-            return found[idx].url
-
-    cache_key = f"{cam.ip}:{stream}" if cam.ip else f"{cam.guid}:{stream}"
-    with _cache_lock:
-        cached_tpl = _rtsp_cache.get(cache_key)
-    if cached_tpl:
-        return build_rtsp_url(cached_tpl, cam, rtsp_port)
+            url = found[idx].url
+            with _cache_lock:
+                _rtsp_cache[cache_key] = "url:" + url
+            if work_dir:
+                save_rtsp_cache(work_dir)
+            return url
 
     probe_list = RTSP_PROBE_TEMPLATES_SUB if stream == "sub" else RTSP_PROBE_TEMPLATES_MAIN
     templates = [tpl]
@@ -191,7 +198,7 @@ def resolve_live_url(cam, rtsp_template: str, rtsp_port: int = 554,
         ensure_tools()
         for candidate in templates:
             url = build_rtsp_url(candidate, cam, rtsp_port)
-            ok, _err = probe_rtsp(url, timeout=5)
+            ok, _err = probe_rtsp(url, timeout=4)
             if ok:
                 with _cache_lock:
                     _rtsp_cache[cache_key] = candidate
@@ -266,13 +273,14 @@ class LiveManager:
                 "-c:v", "libx264", "-preset", "ultrafast", "-tune", "zerolatency",
                 "-pix_fmt", "yuv420p", "-g", "25", "-keyint_min", "25", "-threads", "2",
             ]
+            bsf = ["-bsf:v", "hevc_mp4toannexb"] if self.copy_codec else []
             cmd = [
                 FFMPEG, "-nostdin", "-loglevel", "info",
                 "-rtsp_transport", "tcp",
                 "-fflags", "nobuffer", "-flags", "low_delay",
                 "-probesize", "500000", "-analyzeduration", "1000000",
                 "-i", rtsp,
-                "-an", *vf, *vcodec,
+                "-an", *bsf, *vf, *vcodec,
                 "-f", "hls",
                 "-hls_time", "2",
                 "-hls_list_size", "6",
@@ -392,6 +400,7 @@ def vdo_to_mp4(vdo_path: str, out_path: str, copy_codec: bool = False,
     cmd = [
         FFMPEG, "-nostdin", "-loglevel", "error", "-y",
         "-r", str(fps), "-f", "hevc", "-i", vdo_path,
+        "-bsf:v", "hevc_mp4toannexb",
         "-an", *vcodec, "-movflags", "+faststart",
         out_path,
     ]

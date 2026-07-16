@@ -151,17 +151,17 @@ def find_segment_at(record_root: str, camera_guid: str, date: str, epoch: int):
 
 
 def parse_playback_datetime(value: str) -> tuple[str, int]:
-    """Parse ``YYYY-MM-DDTHH:MM`` or ``YYYY-MM-DD HH:MM:SS`` → (date, epoch UTC)."""
+    """Parse browser datetime-local as **server local time** → (date, epoch)."""
 
     value = value.strip().replace(" ", "T")
     if len(value) == 16:
         value += ":00"
     if value.endswith("Z"):
         dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        epoch = int(dt.timestamp())
     else:
-        # VMS archive timestamps are UTC epoch in .map files
-        dt = datetime.fromisoformat(value).replace(tzinfo=timezone.utc)
-    epoch = int(dt.timestamp())
+        dt = datetime.fromisoformat(value)
+        epoch = int(dt.timestamp())
     return dt.strftime("%Y-%m-%d"), epoch
 
 
@@ -169,4 +169,11 @@ def find_segment_for_datetime(record_root: str, camera_guid: str, when: str):
     """Find archive segment for a wall-clock datetime string."""
 
     date, epoch = parse_playback_datetime(when)
-    return find_segment_at(record_root, camera_guid, date, epoch), date, epoch
+    seg = find_segment_at(record_root, camera_guid, date, epoch)
+    if seg:
+        return seg, date, epoch
+    segs = list_segments(record_root, camera_guid, date)
+    if not segs:
+        return None, date, epoch
+    seg = min(segs, key=lambda s: abs(s.begin - epoch))
+    return seg, date, epoch
