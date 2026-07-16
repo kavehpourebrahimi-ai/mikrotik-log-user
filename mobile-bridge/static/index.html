@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>VMS Mobile</title>
+  <link rel="stylesheet" href="/static/style.css" />
+  <script src="/static/hls.min.js"></script>
+</head>
+<body>
+  <header id="topbar">
+    <button id="backBtn" class="hidden" aria-label="back">‹</button>
+    <h1 id="title">دوربین‌ها</h1>
+    <div id="viewToggle" class="view-toggle">
+      <button id="listViewBtn" class="vt active" data-view="list">لیست</button>
+      <button id="multiViewBtn" class="vt" data-view="multi">چندتایی</button>
+    </div>
+    <button id="refreshBtn" aria-label="refresh">⟳</button>
+  </header>
+
+  <main id="gridView">
+    <div id="cameraGrid" class="grid"></div>
+    <p id="gridEmpty" class="empty hidden">دوربینی پیدا نشد.</p>
+  </main>
+
+  <main id="multiView" class="hidden">
+    <div id="multiGrid" class="multi-grid"></div>
+  </main>
+
+  <main id="camView" class="hidden">
+    <div class="player-wrap">
+      <video id="player" playsinline controls></video>
+      <div id="playerMsg" class="player-msg hidden"></div>
+    </div>
+
+    <div class="tabs">
+      <button class="tab active" data-tab="live">پخش زنده</button>
+      <button class="tab" data-tab="playback">ضبط‌شده</button>
+    </div>
+
+    <section id="livePane" class="pane">
+      <div class="stream-switch">
+        <button id="btnMain" class="ss active" data-stream="main">اصلی (Main)</button>
+        <button id="btnSub" class="ss" data-stream="sub">فرعی (Sub)</button>
+      </div>
+    </section>
+
+    <section id="playbackPane" class="pane hidden">
+      <div class="row">
+        <label>تاریخ:</label>
+        <select id="daySelect"></select>
+      </div>
+      <div class="row">
+        <label>ساعت:</label>
+        <input id="timePick" type="datetime-local" />
+        <button id="playAtBtn" class="btn">پخش</button>
+      </div>
+      <div id="segmentList" class="seg-list"></div>
+      <p id="segEmpty" class="empty hidden">برای این روز ضبطی وجود ندارد.</p>
+    </section>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
