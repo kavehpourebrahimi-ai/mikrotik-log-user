@@ -186,25 +186,46 @@ def _live_playlist_impl(guid: str, stream: str):
     if not cam:
         abort(404, "unknown camera")
     stream = _norm_stream(stream)
-    playlist = LIVE.ensure(cam, stream)
-    for _ in range(100):
+    try:
+        playlist = LIVE.ensure(cam, stream)
+    except FileNotFoundError as exc:
+        return Response(str(exc), status=503, mimetype="text/plain; charset=utf-8")
+    # ensure() already probes / retries; wait a bit more for first .ts
+    for _ in range(150):
         if os.path.isfile(playlist) and os.path.getsize(playlist) > 0:
             st = LIVE.status(guid, stream)
             if st["segment_count"] > 0:
                 return send_file(playlist, mimetype="application/vnd.apple.mpegurl",
                                  max_age=0)
+        if not LIVE.status(guid, stream)["proc_alive"]:
+            break
         time.sleep(0.1)
     st = LIVE.status(guid, stream)
-    if not st["proc_alive"]:
-        detail = st.get("log_tail") or "ffmpeg log empty"
-        if "404" in detail or "Stream Not Found" in detail:
-            detail += " — مسیر RTSP اشتباه. probe_one.py را بزنید."
-        if not streams.tools_status()["ffmpeg_ok"]:
-            detail = "ffmpeg not found — [tools] ffmpeg_bin in config.ini"
-        return Response(detail, status=503, mimetype="text/plain; charset=utf-8")
-    resp = Response("stream starting, retry\n", status=503, mimetype="text/plain")
-    resp.headers["Retry-After"] = "3"
-    return resp
+    parts = []
+    if st.get("resolve_log"):
+        parts.append("--- resolve ---\n" + st["resolve_log"].strip())
+    if st.get("log_tail"):
+        parts.append("--- ffmpeg ---\n" + st["log_tail"].strip())
+    detail = "\n\n".join(parts) if parts else "ffmpeg log empty"
+    if not streams.tools_status()["ffmpeg_ok"]:
+        detail = "ffmpeg not found — [tools] ffmpeg_bin in config.ini"
+    elif "404" in detail or "Stream Not Found" in detail:
+        detail += (
+            "\n\nRTSP path wrong. Open /api/live/%s/diagnose?stream=%s "
+            "or run: python probe_one.py %s"
+        ) % (guid, stream, cam.ip)
+    elif st["proc_alive"]:
+        resp = Response(
+            "stream starting, retry\n\n" + detail,
+            status=503, mimetype="text/plain; charset=utf-8",
+        )
+        resp.headers["Retry-After"] = "3"
+        return resp
+    detail += (
+        "\n\nDiagnose: /api/live/%s/diagnose?stream=%s"
+        % (guid, stream)
+    )
+    return Response(detail, status=503, mimetype="text/plain; charset=utf-8")
 
 
 @app.route("/live/<guid>/index.m3u8")
@@ -238,12 +259,36 @@ def live_status(guid):
     if not cam:
         abort(404, "unknown camera")
     stream = _norm_stream(request.args.get("stream", "main"))
-    LIVE.ensure(cam, stream)
+    start = request.args.get("start", "0") in ("1", "true", "yes")
+    if start:
+        try:
+            LIVE.ensure(cam, stream)
+        except FileNotFoundError as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 503
     st = LIVE.status(guid, stream)
     st["camera"] = cam.name
+    st["ip"] = cam.ip
     if st.get("rtsp") and cam.password:
         st["rtsp"] = st["rtsp"].replace(cam.password, "***")
     return jsonify(st)
+
+
+@app.route("/api/live/<guid>/diagnose")
+def live_diagnose(guid):
+    """Probe ONVIF + RTSP candidates without relying on a previous failed cache."""
+
+    cam = find_camera(guid)
+    if not cam:
+        abort(404, "unknown camera")
+    stream = _norm_stream(request.args.get("stream", "main"))
+    streams.invalidate_rtsp_cache(LIVE.work_dir, cam, stream)
+    return jsonify(LIVE.diagnose(cam, stream))
+
+
+@app.route("/api/live/cache/clear", methods=["POST", "GET"])
+def live_cache_clear():
+    n = streams.invalidate_rtsp_cache(LIVE.work_dir)
+    return jsonify({"ok": True, "removed": n})
 
 
 @app.route("/live/<guid>/<path:rest>")

@@ -195,32 +195,64 @@ function setLiveStream(stream) {
   if (currentCam && !el("livePane").classList.contains("hidden")) startLive();
 }
 
-async function waitForLive(url, guid, attempts = 45) {
+async function waitForLive(url, guid, attempts = 20) {
+  let lastDetail = "";
   for (let i = 0; i < attempts; i++) {
-    showMsg(`در حال اتصال… ${i + 1}/${attempts}`);
+    showMsg(`در حال اتصال لایو… ${i + 1}/${attempts}`);
     try {
-      const r = await fetch(url);
+      const r = await fetch(url + (url.includes("?") ? "&" : "?") + "_=" + Date.now());
       if (r.ok) return true;
+      const body = plainError(await r.text());
+      lastDetail = body;
       if (r.status === 503) {
-        await new Promise((res) => setTimeout(res, 3000));
+        // First ensure() already tried several URLs; short poll for segments.
+        if (body.includes("--- ffmpeg ---") || body.includes("Diagnose:")) {
+          // Hard failure — don't spin for minutes.
+          if (!body.includes("stream starting, retry")) {
+            showMsg("لایو وصل نشد:\n" + body.slice(0, 900));
+            return false;
+          }
+        }
+        await new Promise((res) => setTimeout(res, 2000));
         continue;
       }
-      showMsg("خطا: " + plainError(await r.text()).slice(0, 500));
+      showMsg("خطا: " + body.slice(0, 500));
       return false;
     } catch (e) {
       showMsg("خطا: " + e.message);
       return false;
     }
   }
-  showMsg("استریم آماده نشد.");
+  showMsg("استریم آماده نشد.\n" + (lastDetail || "").slice(0, 700));
   return false;
+}
+
+async function showLiveDiagnose(guid, stream) {
+  try {
+    const d = await api(`/api/live/${guid}/diagnose?stream=${stream}`);
+    const lines = (d.candidates || [])
+      .slice(0, 8)
+      .map((c) => `${c.probe_ok ? "OK" : "NO"} ${c.source}: ${c.url}`)
+      .join("\n");
+    showMsg(
+      (d.ok ? "RTSP پیدا شد ولی ffmpeg HLS نساخت.\n" : "هیچ RTSP معتبری پیدا نشد.\n") +
+      (d.onvif_error ? "ONVIF: " + d.onvif_error + "\n" : "") +
+      lines +
+      `\n\n/api/live/${guid}/diagnose?stream=${stream}`
+    );
+  } catch (e) {
+    showMsg("diagnose failed: " + e.message);
+  }
 }
 
 async function startLive() {
   if (!currentCam) return;
   const url = liveUrl(currentCam.guid, liveStream);
   const ok = await waitForLive(url, currentCam.guid);
-  if (!ok) return;
+  if (!ok) {
+    await showLiveDiagnose(currentCam.guid, liveStream);
+    return;
+  }
   playHls(url);
 }
 

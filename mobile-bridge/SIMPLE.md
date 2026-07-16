@@ -49,3 +49,36 @@ copy_codec = true
 `copy_codec = true` → سرور فقط پروکسی می‌کند، decode روی مرورگر/ویندوز شما.
 
 ffmpeg فقط برای بسته‌بندی استریم لازم است، نه تبدیل کدک.
+
+---
+
+## اگر لایو 503 شد
+
+1. Bridge را **ری‌استارت** کنید (`start.bat`) تا کد جدید لود شود.
+2. در مرورگر باز کنید (به‌جای GUID دوربین بگذارید):
+
+```
+http://IP-سرور:8080/api/live/GUID/diagnose?stream=sub
+```
+
+باید حداقل یک `"probe_ok": true` ببینید.
+
+3. اگر همه `false` بودند:
+
+```cmd
+pip install onvif-zeep
+python probe_one.py 192.168.21.5 --verbose
+```
+
+4. لاگ ffmpeg روی سرور:
+
+```
+%TEMP%\vms_bridge\live\GUID_sub\ffmpeg.log
+%TEMP%\vms_bridge\live\GUID_sub\resolve.log
+```
+
+5. کش خراب RTSP:
+
+```
+http://IP-سرور:8080/api/live/cache/clear
+```
